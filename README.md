@@ -20,8 +20,7 @@ A powerful, asynchronous Git commit workflow enhancement plugin for Neovim 0.11+
 
 ```lua
 {
-  dir = "/home/kboshold/workspace/config/smart-commit.nvim", -- Path to the plugin
-  name = "smart-commit",
+  "kboshold/smart-commit",
   lazy = false,
   dependencies = {
     "nvim-lua/plenary.nvim",
@@ -110,16 +109,16 @@ tasks = {
       NODE_ENV = "development"
     },
   },
-  
+
   -- Disable a task by setting it to false
   ["some-task"] = false,
-  
+
   -- Extend a predefined task
   ["custom-lint"] = {
     extend = "pnpm-lint",      -- ID of predefined task to extend
     label = "Custom Linter",   -- Override properties from base task
   },
-  
+
   -- Use shorthand syntax for predefined tasks
   ["copilot:message"] = true,  -- Enable the predefined copilot:message task
 }
@@ -143,7 +142,7 @@ return {
       extend = "pnpm",
       script = "lint",
     },
-    
+
     -- PNPM Prisma Generate task
     ["pnpm-prisma-generate"] = {
       label = "PNPM Prisma Generate",
@@ -151,7 +150,7 @@ return {
       extend = "pnpm",
       script = "prisma generate",
     },
-    
+
     -- PNPM Typecheck task (depends on prisma generate)
     ["pnpm-typecheck"] = {
       label = "PNPM Typecheck",
@@ -160,10 +159,10 @@ return {
       script = "typecheck",
       depends_on = { "pnpm-prisma-generate" },
     },
-    
+
     -- Copilot message task (using shorthand syntax)
     ["copilot:message"] = true,
-    
+
     -- Code analysis task (using shorthand syntax)
     ["copilot:analyze"] = true,
   },
@@ -181,6 +180,7 @@ Smart Commit comes with several predefined tasks that you can use or extend:
   - Verifies script exists in package.json before running
 
 Example:
+
 ```lua
 ["pnpm-lint"] = {
   extend = "pnpm",
@@ -191,6 +191,7 @@ Example:
 ### Copilot Tasks
 
 - **copilot:message**: Generates a commit message using GitHub Copilot
+
   - Analyzes staged changes
   - Parses branch name for commit type and scope
   - Follows Conventional Commits format
@@ -286,7 +287,7 @@ You can create custom tasks in several ways:
     local win_id = ctx.win_id
     local buf_id = ctx.buf_id
     local runner = ctx.runner
-    
+
     -- Do something asynchronous
     vim.schedule(function()
       -- Update task state manually
@@ -295,7 +296,7 @@ You can create custom tasks in several ways:
       runner.update_ui(win_id)
       runner.update_signs(win_id)
     end)
-    
+
     -- Return nil to indicate manual state management
     return nil
   end,
