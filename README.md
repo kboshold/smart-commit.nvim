@@ -20,7 +20,7 @@ A powerful, asynchronous Git commit workflow enhancement plugin for Neovim 0.11+
 
 ```lua
 {
-  "kboshold/smart-commit",
+  "kboshold/smart-commit.nvim",
   lazy = false,
   dependencies = {
     "nvim-lua/plenary.nvim",
