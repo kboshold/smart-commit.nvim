@@ -2,10 +2,10 @@
 -- Author: kboshold
 
 -- Import dependencies
-local ui = require("smart-commit.ui")
-local types = require("smart-commit.types")
-local runner = require("smart-commit.runner")
 local config_loader = require("smart-commit.config")
+local runner = require("smart-commit.runner")
+local types = require("smart-commit.types")
+local ui = require("smart-commit.ui")
 
 ---@class SmartCommit
 local M = {}

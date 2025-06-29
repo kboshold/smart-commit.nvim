@@ -1,8 +1,8 @@
 -- Smart Commit Predefined Tasks
 -- Author: kboshold
 
-local pnpm = require("smart-commit.predefined.pnpm")
 local copilot = require("smart-commit.predefined.copilot")
+local pnpm = require("smart-commit.predefined.pnpm")
 
 ---@class PredefinedTasks
 local M = {}
