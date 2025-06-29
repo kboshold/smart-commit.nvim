@@ -116,11 +116,11 @@ If there are no issues in a category, simply state "No issues found".
           end)
           return
         end
-        
+
         -- Check for quota exceeded message
         if response:match("[Qq]uota exceeded") or response:match("[Qq]uota extended") then
           vim.notify("Copilot quota exceeded", vim.log.levels.ERROR)
-          
+
           -- Update task status to failed
           vim.schedule(function()
             ctx.runner.tasks[ctx.task.id].output = "Copilot quota exceeded"
@@ -218,11 +218,11 @@ Only create the commit message. Do not explain anything!
           end)
           return
         end
-        
+
         -- Check for quota exceeded message
         if response:match("[Qq]uota exceeded") or response:match("[Qq]uota extended") then
           vim.notify("Copilot quota exceeded", vim.log.levels.ERROR)
-          
+
           -- Update task status to failed
           vim.schedule(function()
             ctx.runner.tasks[ctx.task.id].output = "Copilot quota exceeded"

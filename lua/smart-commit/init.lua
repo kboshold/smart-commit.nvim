@@ -140,7 +140,7 @@ end
 function M.register_task(id, task)
   -- Ensure task has an ID
   task.id = id
-  
+
   -- Add to the tasks configuration
   M.config.tasks[id] = task
 end
@@ -150,7 +150,7 @@ end
 function M.run_tasks()
   local win_id = vim.api.nvim_get_current_win()
   local buf_id = vim.api.nvim_win_get_buf(win_id)
-  
+
   -- Show initial header
   ---@type StickyHeaderContent
   local content = {

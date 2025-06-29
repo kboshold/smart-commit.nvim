@@ -196,19 +196,19 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
       if data then
         M.tasks[task.id].output = M.tasks[task.id].output .. data
       end
-    end
+    end,
   }
-  
+
   -- Set working directory if specified
   if task.cwd then
     options.cwd = task.cwd
   end
-  
+
   -- Set environment variables if specified
   if task.env and type(task.env) == "table" then
     options.env = task.env
   end
-  
+
   -- Run the task asynchronously
   vim.system(cmd_parts, options, function(obj)
     -- Update task state based on exit code and set end_time
@@ -393,12 +393,18 @@ function M.update_ui(win_id, tasks, config)
     if any_failed then
       table.insert(content, {
         { text = "Status: ", highlight_group = "Label" },
-        { text = utils.ICONS.ERROR .. " Some tasks failed" .. elapsed_text, highlight_group = "DiagnosticError" },
+        {
+          text = utils.ICONS.ERROR .. " Some tasks failed" .. elapsed_text,
+          highlight_group = "DiagnosticError",
+        },
       })
     else
       table.insert(content, {
         { text = "Status: ", highlight_group = "Label" },
-        { text = utils.ICONS.SUCCESS .. " All tasks completed" .. elapsed_text, highlight_group = "DiagnosticOk" },
+        {
+          text = utils.ICONS.SUCCESS .. " All tasks completed" .. elapsed_text,
+          highlight_group = "DiagnosticOk",
+        },
       })
     end
   end
