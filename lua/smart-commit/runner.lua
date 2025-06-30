@@ -457,7 +457,7 @@ function M.update_ui(win_id, tasks, config)
       status_text = utils.get_current_spinner_frame() .. " Running..."
       status_hl = "DiagnosticInfo"
     elseif task_state.state == M.TASK_STATE.WAITING then
-      status_text = "⏳ Waiting for dependencies..."
+      status_text = utils.ICONS.WAITING .. " Waiting for dependencies..."
       status_hl = "DiagnosticHint"
     elseif task_state.state == M.TASK_STATE.SUCCESS then
       -- Calculate elapsed time for completed tasks
@@ -474,10 +474,10 @@ function M.update_ui(win_id, tasks, config)
       status_text = utils.ICONS.ERROR .. " Failed" .. elapsed_text
       status_hl = "DiagnosticError"
     elseif task_state.state == M.TASK_STATE.SKIPPED then
-      status_text = " Skipped"
+      status_text = utils.ICONS.SKIPPED .. " Skipped"
       status_hl = "Comment"
     else
-      status_text = "󰔟 Pending"
+      status_text = utils.ICONS.PENDING .. " Pending"
       status_hl = "Comment"
     end
 

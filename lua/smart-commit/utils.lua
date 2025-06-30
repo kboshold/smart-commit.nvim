@@ -37,11 +37,12 @@ end
 -- Define sign icons
 ---@type table<string, string>
 M.ICONS = {
-  RUNNING = "󱑢", -- Spinner icon
-  SUCCESS = "✓", -- Check mark
-  ERROR = "✗", -- X mark
-  WARNING = "⚠", -- Warning
-  INFO = "ℹ", -- Info
+  RUNNING = "",
+  SUCCESS = "✓",
+  ERROR = "",
+  WAITING = "󰔟",
+  PENDING = "󰔟",
+  SKIPPED = "󰒭",
 }
 
 -- Border icons for UI
