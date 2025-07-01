@@ -2,7 +2,8 @@
 
 A powerful, asynchronous Git commit workflow enhancement plugin for Neovim 0.11+. Smart Commit automatically runs configurable tasks when you open a Git commit buffer, providing real-time feedback and insights without blocking your editor.
 
-![Smart Commit Demo](https://github.com/kboshold/smart-commit/assets/demo.gif)
+![image](https://github.com/user-attachments/assets/c08cb433-1961-4b49-bdf9-f790d46d27c7)
+
 
 ## Features
 
