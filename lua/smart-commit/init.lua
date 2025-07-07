@@ -73,6 +73,8 @@ function M.create_autocommands()
     pattern = "COMMIT_EDITMSG",
     callback = function(args)
       processed_buffers[args.buf] = nil
+      -- Also kill tasks when buffer is deleted
+      runner.kill_all_tasks()
     end,
     desc = "Clean up Smart Commit tracking for deleted buffers",
   })
@@ -169,6 +171,11 @@ function M.run_tasks()
 
   -- Run tasks from configuration with dependency tracking
   runner.run_tasks_with_dependencies(win_id, M.config.tasks, M.config)
+end
+
+-- Kill all running tasks
+function M.kill_all_tasks()
+  runner.kill_all_tasks()
 end
 
 -- Initialize with default settings if not explicitly set up

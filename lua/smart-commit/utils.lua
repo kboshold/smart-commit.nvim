@@ -43,6 +43,7 @@ M.ICONS = {
   WAITING = "󰔟",
   PENDING = "󰔟",
   SKIPPED = "󰒭",
+  ABORTED = "󰜺",
 }
 
 -- Border icons for UI

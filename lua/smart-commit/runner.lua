@@ -15,17 +15,34 @@ M.TASK_STATE = {
   SUCCESS = "success",
   FAILED = "failed",
   SKIPPED = "skipped", -- New state for tasks that were skipped due to conditions
+  ABORTED = "aborted", -- New state for tasks that were killed/aborted
 }
 
 -- Current task state
----@type table<string, {state: string, output: string, start_time: number, end_time: number?}>
+---@type table<string, {state: string, output: string, start_time: number, end_time: number?, process: any?}>
 M.tasks = {}
+
+-- Helper function to safely update task state (prevents overriding ABORTED state)
+---@param task_id string The task ID
+---@param new_state string The new state to set
+---@return boolean success Whether the state was updated
+local function safe_update_task_state(task_id, new_state)
+  if M.tasks[task_id] and M.tasks[task_id].state ~= M.TASK_STATE.ABORTED then
+    M.tasks[task_id].state = new_state
+    return true
+  end
+  return false
+end
 
 -- Overall process timing
 M.process_start_time = 0
 
 -- Timer for UI updates
 local update_timer = nil
+
+-- Store active processes for cleanup
+---@type table<string, any>
+local active_processes = {}
 
 -- Define signs for the sign column
 local function setup_signs()
@@ -86,8 +103,11 @@ function M.run_task(win_id, task, all_tasks, config)
     -- Process the result
     if type(result) == "boolean" then
       -- Boolean result indicates success/failure
-      M.tasks[task.id].state = result and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED
-      M.tasks[task.id].end_time = vim.loop.now()
+      -- Only update state if the task hasn't been aborted
+      local state_updated = safe_update_task_state(task.id, result and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED)
+      if state_updated then
+        M.tasks[task.id].end_time = vim.loop.now()
+      end
       vim.schedule(function()
         M.update_ui(win_id, all_tasks, config)
         M.update_signs(win_id)
@@ -114,12 +134,13 @@ function M.run_task(win_id, task, all_tasks, config)
     M.tasks[task.id].end_time = vim.loop.now()
 
     -- Process the result
+    -- Only update state if the task hasn't been aborted
     if type(result) == "boolean" then
-      M.tasks[task.id].state = result and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED
+      safe_update_task_state(task.id, result and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED)
     elseif type(result) == "table" and result.ok ~= nil then
-      M.tasks[task.id].state = result.ok and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED
+      safe_update_task_state(task.id, result.ok and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED)
     else
-      M.tasks[task.id].state = M.TASK_STATE.FAILED
+      safe_update_task_state(task.id, M.TASK_STATE.FAILED)
     end
 
     vim.schedule(function()
@@ -142,7 +163,8 @@ function M.run_task(win_id, task, all_tasks, config)
   -- If cmd is nil or empty, skip this task
   if not cmd or cmd == "" then
     vim.notify("Empty command for task: " .. task.id .. ", marking as success", vim.log.levels.WARN)
-    M.tasks[task.id].state = M.TASK_STATE.SUCCESS
+    -- Only update state if the task hasn't been aborted
+    safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
     vim.schedule(function()
       M.update_ui(win_id, all_tasks)
       M.update_signs(win_id)
@@ -164,14 +186,16 @@ end
 function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
   -- Handle special commands like "exit 0" or "exit 1"
   if cmd == "exit 0" then
-    M.tasks[task.id].state = M.TASK_STATE.SUCCESS
+    -- Only update state if the task hasn't been aborted
+    safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
     vim.schedule(function()
       M.update_ui(win_id, all_tasks, config)
       M.update_signs(win_id)
     end)
     return
   elseif cmd == "exit 1" then
-    M.tasks[task.id].state = M.TASK_STATE.FAILED
+    -- Only update state if the task hasn't been aborted
+    safe_update_task_state(task.id, M.TASK_STATE.FAILED)
     vim.schedule(function()
       M.update_ui(win_id, all_tasks, config)
       M.update_signs(win_id)
@@ -210,14 +234,18 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
   end
 
   -- Run the task asynchronously
-  vim.system(cmd_parts, options, function(obj)
+  local process = vim.system(cmd_parts, options, function(obj)
+    -- Remove from active processes
+    active_processes[task.id] = nil
+    
     -- Update task state based on exit code and set end_time
     M.tasks[task.id].end_time = vim.loop.now()
 
+    -- Only update state if the task hasn't been aborted
     if obj.code == 0 then
-      M.tasks[task.id].state = M.TASK_STATE.SUCCESS
+      safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
     else
-      M.tasks[task.id].state = M.TASK_STATE.FAILED
+      safe_update_task_state(task.id, M.TASK_STATE.FAILED)
     end
 
     -- Update UI with the final state
@@ -231,6 +259,9 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
       end
     end)
   end)
+  
+  -- Store the process handle for potential cleanup
+  active_processes[task.id] = process
 
   -- Update signs immediately
   M.update_signs(win_id)
@@ -307,7 +338,7 @@ function M.update_signs(win_id)
   for _, task in pairs(M.tasks) do
     if task.state == M.TASK_STATE.RUNNING then
       running_count = running_count + 1
-    elseif task.state == M.TASK_STATE.FAILED then
+    elseif task.state == M.TASK_STATE.FAILED or task.state == M.TASK_STATE.ABORTED then
       error_count = error_count + 1
     elseif task.state == M.TASK_STATE.SUCCESS then
       success_count = success_count + 1
@@ -377,10 +408,10 @@ function M.update_ui(win_id, tasks, config)
       },
     })
   else
-    -- Check if any task failed
+    -- Check if any task failed or was aborted
     local any_failed = false
     for _, task in pairs(M.tasks) do
-      if task.state == M.TASK_STATE.FAILED then
+      if task.state == M.TASK_STATE.FAILED or task.state == M.TASK_STATE.ABORTED then
         any_failed = true
         break
       end
@@ -437,70 +468,73 @@ function M.update_ui(win_id, tasks, config)
     local task_state = M.tasks[id]
 
     -- Skip this task if it's skipped and hide_skipped is true
-    if task_state.state == M.TASK_STATE.SKIPPED and config and config.defaults and config.defaults.hide_skipped then
-      goto continue
+    if not (task_state.state == M.TASK_STATE.SKIPPED and config and config.defaults and config.defaults.hide_skipped) then
+      visible_tasks = visible_tasks + 1
+      local status_text = ""
+      local status_hl = ""
+      local border_char = utils.BORDERS.MIDDLE
+      local task_config = tasks[id]
+      local task_icon = task_config and task_config.icon or ""
+
+      -- Use bottom border for the last visible task
+      if visible_tasks == total_visible_tasks then
+        border_char = utils.BORDERS.BOTTOM
+      end
+
+      if task_state.state == M.TASK_STATE.RUNNING then
+        status_text = utils.get_current_spinner_frame() .. " Running..."
+        status_hl = "DiagnosticInfo"
+      elseif task_state.state == M.TASK_STATE.WAITING then
+        status_text = utils.ICONS.WAITING .. " Waiting for dependencies..."
+        status_hl = "DiagnosticHint"
+      elseif task_state.state == M.TASK_STATE.SUCCESS then
+        -- Calculate elapsed time for completed tasks
+        local elapsed_ms = task_state.start_time > 0 and (task_state.end_time or vim.loop.now()) - task_state.start_time
+          or 0
+        local elapsed_text = string.format(" (%.2fs)", elapsed_ms / 1000)
+        status_text = utils.ICONS.SUCCESS .. " Success" .. elapsed_text
+        status_hl = "DiagnosticOk"
+      elseif task_state.state == M.TASK_STATE.FAILED then
+        -- Calculate elapsed time for failed tasks
+        local elapsed_ms = task_state.start_time > 0 and (task_state.end_time or vim.loop.now()) - task_state.start_time
+          or 0
+        local elapsed_text = string.format(" (%.2fs)", elapsed_ms / 1000)
+        status_text = utils.ICONS.ERROR .. " Failed" .. elapsed_text
+        status_hl = "DiagnosticError"
+      elseif task_state.state == M.TASK_STATE.SKIPPED then
+        status_text = utils.ICONS.SKIPPED .. " Skipped"
+        status_hl = "Comment"
+      elseif task_state.state == M.TASK_STATE.ABORTED then
+        -- Calculate elapsed time for aborted tasks
+        local elapsed_ms = task_state.start_time > 0 and (task_state.end_time or vim.loop.now()) - task_state.start_time
+          or 0
+        local elapsed_text = string.format(" (%.2fs)", elapsed_ms / 1000)
+        status_text = utils.ICONS.ABORTED .. " Aborted" .. elapsed_text
+        status_hl = "DiagnosticWarn"
+      else
+        status_text = utils.ICONS.PENDING .. " Pending"
+        status_hl = "Comment"
+      end
+
+      -- Use task label instead of ID if available
+      local display_text = id
+      local task_config = tasks[id]
+      local task_icon = task_config and task_config.icon or ""
+      local task_label = task_config and task_config.label or id
+
+      -- Use icon + label if available, otherwise use ID
+      if task_icon and task_icon ~= "" then
+        display_text = task_icon .. " " .. task_label
+      else
+        display_text = task_label
+      end
+
+      table.insert(content, {
+        { text = border_char .. " ", highlight_group = "Comment" },
+        { text = display_text .. " ", highlight_group = "Identifier" },
+        { text = status_text, highlight_group = status_hl },
+      })
     end
-
-    visible_tasks = visible_tasks + 1
-    local status_text = ""
-    local status_hl = ""
-    local border_char = utils.BORDERS.MIDDLE
-    local task_config = tasks[id]
-    local task_icon = task_config and task_config.icon or ""
-
-    -- Use bottom border for the last visible task
-    if visible_tasks == total_visible_tasks then
-      border_char = utils.BORDERS.BOTTOM
-    end
-
-    if task_state.state == M.TASK_STATE.RUNNING then
-      status_text = utils.get_current_spinner_frame() .. " Running..."
-      status_hl = "DiagnosticInfo"
-    elseif task_state.state == M.TASK_STATE.WAITING then
-      status_text = utils.ICONS.WAITING .. " Waiting for dependencies..."
-      status_hl = "DiagnosticHint"
-    elseif task_state.state == M.TASK_STATE.SUCCESS then
-      -- Calculate elapsed time for completed tasks
-      local elapsed_ms = task_state.start_time > 0 and (task_state.end_time or vim.loop.now()) - task_state.start_time
-        or 0
-      local elapsed_text = string.format(" (%.2fs)", elapsed_ms / 1000)
-      status_text = utils.ICONS.SUCCESS .. " Success" .. elapsed_text
-      status_hl = "DiagnosticOk"
-    elseif task_state.state == M.TASK_STATE.FAILED then
-      -- Calculate elapsed time for failed tasks
-      local elapsed_ms = task_state.start_time > 0 and (task_state.end_time or vim.loop.now()) - task_state.start_time
-        or 0
-      local elapsed_text = string.format(" (%.2fs)", elapsed_ms / 1000)
-      status_text = utils.ICONS.ERROR .. " Failed" .. elapsed_text
-      status_hl = "DiagnosticError"
-    elseif task_state.state == M.TASK_STATE.SKIPPED then
-      status_text = utils.ICONS.SKIPPED .. " Skipped"
-      status_hl = "Comment"
-    else
-      status_text = utils.ICONS.PENDING .. " Pending"
-      status_hl = "Comment"
-    end
-
-    -- Use task label instead of ID if available
-    local display_text = id
-    local task_config = tasks[id]
-    local task_icon = task_config and task_config.icon or ""
-    local task_label = task_config and task_config.label or id
-
-    -- Use icon + label if available, otherwise use ID
-    if task_icon and task_icon ~= "" then
-      display_text = task_icon .. " " .. task_label
-    else
-      display_text = task_label
-    end
-
-    table.insert(content, {
-      { text = border_char .. " ", highlight_group = "Comment" },
-      { text = display_text .. " ", highlight_group = "Identifier" },
-      { text = status_text, highlight_group = status_hl },
-    })
-
-    ::continue::
   end
 
   -- Update the header
@@ -621,6 +655,41 @@ function M.run_tasks_with_dependencies(win_id, tasks, config)
       end
     end)
   end)
+end
+
+-- Kill all active processes
+function M.kill_all_tasks()
+  -- Kill all active processes
+  for task_id, process in pairs(active_processes) do
+    if process and process.pid then
+      -- Try to kill the process gracefully first, then forcefully
+      pcall(function()
+        process:kill(15) -- SIGTERM
+      end)
+      
+      -- After a short delay, force kill if still running
+      vim.defer_fn(function()
+        pcall(function()
+          process:kill(9) -- SIGKILL
+        end)
+      end, 1000)
+      
+      -- Update task state to indicate it was killed
+      -- Note: This ABORTED state will be preserved by safe_update_task_state()
+      -- to prevent async callbacks from overriding it
+      if M.tasks[task_id] then
+        M.tasks[task_id].state = M.TASK_STATE.ABORTED
+        M.tasks[task_id].end_time = vim.loop.now()
+        M.tasks[task_id].output = M.tasks[task_id].output .. "\n[Process aborted by user]"
+      end
+    end
+  end
+  
+  -- Clear the active processes table
+  active_processes = {}
+  
+  -- Stop UI updates
+  M.stop_ui_updates()
 end
 
 return M

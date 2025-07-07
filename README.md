@@ -10,6 +10,7 @@ A powerful, asynchronous Git commit workflow enhancement plugin for Neovim 0.11+
 - **Automatic Activation**: Runs when you open a Git commit buffer
 - **Asynchronous Task Runner**: Execute tasks in parallel with dependency tracking
 - **Real-time UI Feedback**: Non-intrusive sticky header shows task progress and status
+- **Automatic Cleanup**: Force kills all running tasks when leaving the commit buffer
 - **Hierarchical Configuration**: Merge settings from plugin defaults, user config, and project-specific files
 - **Extensible Task System**: Create custom tasks or extend predefined ones
 - **Copilot Integration**: Generate commit messages and analyze staged changes with GitHub Copilot
@@ -201,6 +202,16 @@ Example:
   - Identifies bugs, security concerns, and code quality issues
   - Displays results in a side panel
 
+## Commands
+
+Smart Commit provides several user commands for easy access:
+
+- `:SmartCommitKill` - Kill all running tasks immediately
+- `:SmartCommitRun` - Manually run tasks in the current buffer
+- `:SmartCommitToggle` - Toggle auto-run on/off
+- `:SmartCommitEnable` - Enable auto-run
+- `:SmartCommitDisable` - Disable auto-run
+
 ## API
 
 Smart Commit provides a public API for programmatic usage:
@@ -216,6 +227,9 @@ smart_commit.toggle()
 -- Run tasks manually
 smart_commit.run_tasks()
 
+-- Kill all running tasks (useful for cleanup)
+smart_commit.kill_all_tasks()
+
 -- Register a custom task programmatically
 smart_commit.register_task("my-task", {
   label = "My Custom Task",
@@ -227,6 +241,28 @@ smart_commit.register_task("my-task", {
 
 - `SMART_COMMIT_ENABLED=0`: Disable Smart Commit for a specific commit
 
+## Task Management
+
+### Automatic Cleanup
+
+Smart Commit automatically manages running tasks to prevent orphaned processes:
+
+- **Buffer Leave**: When you leave the commit buffer (switch to another buffer), all running tasks are immediately force-killed
+- **Buffer Delete**: When the commit buffer is deleted, all running tasks are force-killed
+- **Graceful Termination**: Tasks are first sent a SIGTERM signal, followed by SIGKILL after 1 second if still running
+- **State Updates**: Killed tasks are marked as aborted with a note indicating they were terminated by the user
+
+This ensures that no background processes continue running after you've finished with your commit, preventing resource leaks and unexpected behavior.
+
+### Manual Task Control
+
+You can also manually control tasks using the API:
+
+```lua
+-- Kill all running tasks immediately
+require("smart-commit").kill_all_tasks()
+```
+
 ## Task States
 
 Tasks can be in one of the following states:
@@ -236,6 +272,7 @@ Tasks can be in one of the following states:
 - **Running**: Task is currently executing
 - **Success**: Task completed successfully
 - **Failed**: Task failed to complete
+- **Aborted**: Task was killed/aborted by user
 - **Skipped**: Task was skipped due to conditions
 
 ## Creating Custom Tasks
