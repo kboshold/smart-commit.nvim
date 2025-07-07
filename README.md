@@ -54,9 +54,19 @@ A powerful, asynchronous Git commit workflow enhancement plugin for Neovim 0.11+
 Smart Commit uses a hierarchical configuration system that merges settings from multiple sources:
 
 1. **Plugin Defaults**: Base configuration defined within the plugin
-2. **User Global Config**: `~/.smart-commit.lua` in your Neovim config directory
-3. **Project-Specific Config**: `.smart-commit.lua` in your project directory
-4. **Runtime Setup**: The table passed to `setup({})`
+2. **User Global Config**: `~/.smart-commit.lua` in your home directory
+3. **Parent Directory Configs**: `.smart-commit.lua` files in parent directories (loaded from root to current)
+4. **Project-Specific Config**: `.smart-commit.lua` in your current project directory
+5. **Runtime Setup**: The table passed to `setup({})`
+
+**Example hierarchy:**
+```
+/home/user/.smart-commit.lua              # Global config
+/home/user/workspace/.smart-commit.lua    # Workspace config  
+/home/user/workspace/project/.smart-commit.lua  # Project config
+```
+
+When you're in `/home/user/workspace/project/subdir/`, all three config files will be loaded and merged, with later configs overriding earlier ones.
 
 ### Configuration Options
 
@@ -72,10 +82,127 @@ require("smart-commit").setup({
       refresh_rate = 100,      -- UI refresh rate in milliseconds
     },
   },
+  predefined_tasks = {
+    -- Define reusable task templates that don't run by default
+    ["my-lint"] = {
+      label = "My Custom Linter",
+      icon = "󰉁",
+      command = "eslint --fix .",
+    },
+    ["my-test"] = {
+      label = "My Test Suite",
+      icon = "󰙨",
+      command = "npm test",
+      timeout = 60000,
+    },
+  },
   tasks = {
     -- Task configurations (see below)
   },
 })
+```
+
+### Predefined Tasks
+
+Predefined tasks are reusable task templates that you can define once and use multiple times. They don't run by default - you need to explicitly enable them.
+
+#### Defining Predefined Tasks
+
+You can define predefined tasks in three places, and they are available across all configuration levels:
+
+1. **Plugin setup** (lazy.nvim config):
+```lua
+{
+  "kboshold/smart-commit.nvim",
+  config = function()
+    require("smart-commit").setup({
+      predefined_tasks = {
+        ["my-lint"] = {
+          label = "My Linter",
+          command = "eslint --fix .",
+        },
+      },
+    })
+  end,
+}
+```
+
+2. **Global config** (`~/.smart-commit.lua`):
+```lua
+return {
+  predefined_tasks = {
+    ["global-lint-fix"] = {
+      label = "Global Lint Fix",
+      command = "eslint --fix .",
+      timeout = 30000,
+    },
+    ["global-test"] = {
+      label = "Global Test Suite", 
+      command = "npm test",
+    },
+  },
+}
+```
+
+3. **Project config** (`.smart-commit.lua`):
+```lua
+return {
+  predefined_tasks = {
+    ["project-build"] = {
+      label = "Project Build",
+      command = "npm run build",
+    },
+  },
+  tasks = {
+    -- Use global predefined tasks in project config
+    ["global-test"] = true,
+    ["global-lint-fix"] = true,
+    
+    -- Extend global predefined tasks
+    ["custom-lint"] = {
+      extend = "global-lint-fix",
+      cwd = "./src",
+    },
+    
+    -- Use project predefined tasks
+    ["project-build"] = true,
+  },
+}
+```
+
+#### Cross-File Predefined Task Usage
+
+Predefined tasks defined in parent configurations are automatically available in child configurations:
+
+- **Setup predefined tasks** → Available in global and project configs
+- **Global predefined tasks** → Available in project configs  
+- **Project predefined tasks** → Available only in that project
+
+This allows you to:
+- Define common tasks once in your global config
+- Use them across all your projects
+- Extend them with project-specific customizations
+
+#### Using Predefined Tasks
+
+Once defined, you can use predefined tasks in your `tasks` configuration:
+
+```lua
+tasks = {
+  -- Enable a predefined task with shorthand syntax
+  ["my-lint"] = true,
+  
+  -- Extend a predefined task with custom properties
+  ["custom-lint"] = {
+    extend = "my-lint",
+    label = "Custom Linter", -- Override the label
+    timeout = 30000,         -- Add custom timeout
+  },
+  
+  -- Use built-in predefined tasks
+  ["copilot:message"] = true,
+  ["copilot:analyze"] = true,
+}
 ```
 
 ### Task Configuration
@@ -127,13 +254,16 @@ tasks = {
   -- Disable a task by setting it to false
   ["some-task"] = false,
 
+  -- Enable a predefined task with shorthand syntax
+  ["my-predefined-task"] = true,
+
   -- Extend a predefined task
   ["custom-lint"] = {
     extend = "pnpm-lint",      -- ID of predefined task to extend
     label = "Custom Linter",   -- Override properties from base task
   },
 
-  -- Use shorthand syntax for predefined tasks
+  -- Use shorthand syntax for built-in predefined tasks
   ["copilot:message"] = true,  -- Enable the predefined copilot:message task
 }
 ```
@@ -219,6 +349,15 @@ return {
   defaults = {
     hide_skipped = true,
   },
+  predefined_tasks = {
+    -- Define project-specific predefined tasks
+    ["project-lint-fix"] = {
+      label = "Project Lint Fix",
+      icon = "󰉁",
+      extend = "pnpm",
+      script = "lint:fix",
+    },
+  },
   tasks = {
     -- PNPM Lint task
     ["pnpm-lint"] = {
@@ -226,6 +365,7 @@ return {
       icon = "󰉁",
       extend = "pnpm",
       script = "lint",
+      on_fail = "project-lint-fix", -- Use predefined task as callback
     },
 
     -- PNPM Prisma Generate task
@@ -425,6 +565,30 @@ You can create custom tasks in several ways:
 ```
 
 ## Troubleshooting
+
+### Debug Mode
+
+Enable debug mode to see which config files are being loaded and which predefined tasks are registered:
+
+```bash
+SMART_COMMIT_DEBUG=1 git commit
+```
+
+**Note**: The debug flag is cached when the plugin loads to avoid issues with Neovim's fast event contexts. If you need to change the debug setting during a session, restart Neovim or reload the plugin.
+
+This will show output like:
+```
+Smart Commit: Loading config files:
+  - /home/user/.smart-commit.lua
+    → 2 predefined tasks
+    → 1 tasks
+  - /home/user/workspace/project/.smart-commit.lua
+    → 1 predefined tasks
+    → 3 tasks
+Smart Commit: Registered predefined task 'global-lint' from /home/user/.smart-commit.lua
+Smart Commit: Using predefined task 'pnpm:eslint-fix' as callback
+Smart Commit: Final config has 4 tasks
+```
 
 ### Task Not Running
 

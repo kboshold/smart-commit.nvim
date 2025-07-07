@@ -58,7 +58,8 @@ local M = {}
 
 ---@class SmartCommitConfig
 ---@field defaults? SmartCommitDefaults
----@field tasks? table<string, SmartCommitTask | false> # A map of task configurations. Setting a task to `false` disables it.
+---@field predefined_tasks? table<string, SmartCommitTask> # User-defined predefined tasks that don't run by default
+---@field tasks? table<string, SmartCommitTask | false | true> # A map of task configurations. Setting a task to `false` disables it, `true` enables a predefined task.
 
 --- A chunk of text with an associated highlight group.
 ---@class StickyHeaderChunk

@@ -18,14 +18,41 @@ M.config = config_loader.defaults
 ---@param opts SmartCommitConfig|nil User configuration table
 ---@return SmartCommit The plugin instance
 function M.setup(opts)
-  -- Load configuration from files
+  -- Register predefined tasks from setup() first if provided
+  -- This ensures they're available when loading file configs
+  if opts and opts.predefined_tasks then
+    local predefined = require("smart-commit.predefined")
+    for id, task in pairs(opts.predefined_tasks) do
+      -- Ensure the task has the correct ID
+      task.id = id
+      -- Register with the predefined tasks system
+      predefined.register(id, task)
+    end
+  end
+
+  -- Load configuration from files (now with setup predefined tasks available)
   local file_config = config_loader.load_config()
 
-  -- Start with defaults, then apply file config, then apply setup opts
+  -- Start with defaults, then apply file config
   M.config = vim.tbl_deep_extend("force", M.config, file_config)
 
-  -- Merge user config from setup() if provided
+  -- Finally apply setup opts (this can override file config)
   if opts then
+    -- Process setup tasks with access to all predefined tasks (including from files)
+    if opts.tasks then
+      local predefined = require("smart-commit.predefined")
+      local all_predefined_tasks = {}
+      
+      -- Collect all registered predefined tasks
+      for id, task in pairs(predefined.tasks) do
+        all_predefined_tasks[id] = task
+      end
+      
+      -- Process setup tasks
+      local processed_setup_tasks = config_loader.process_tasks(opts.tasks, all_predefined_tasks)
+      opts.tasks = processed_setup_tasks
+    end
+    
     M.config = vim.tbl_deep_extend("force", M.config, opts)
   end
 

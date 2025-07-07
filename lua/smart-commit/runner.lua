@@ -7,6 +7,14 @@ local utils = require("smart-commit.utils")
 ---@class SmartCommitRunner
 local M = {}
 
+-- Cache debug flag to avoid accessing vim.env in fast event contexts
+local debug_enabled = vim.env.SMART_COMMIT_DEBUG == "1"
+
+-- Function to refresh debug flag (useful for runtime changes)
+local function refresh_debug_flag()
+  debug_enabled = vim.env.SMART_COMMIT_DEBUG == "1"
+end
+
 -- Task states
 M.TASK_STATE = {
   PENDING = "pending",
@@ -44,6 +52,23 @@ local function execute_callback(callback, result, win_id, all_tasks, config)
   if type(callback) == "string" then
     -- Callback is a task ID - run that task
     local task_to_run = all_tasks[callback]
+    
+    -- If not found in all_tasks, check predefined tasks
+    if not task_to_run then
+      local predefined = require("smart-commit.predefined")
+      local predefined_task = predefined.get(callback)
+      if predefined_task then
+        if debug_enabled then
+          print("Smart Commit: Using predefined task '" .. callback .. "' as callback")
+        end
+        -- Create a copy of the predefined task
+        task_to_run = vim.deepcopy(predefined_task)
+        task_to_run.id = callback
+        -- Add it to all_tasks so it can be referenced later
+        all_tasks[callback] = task_to_run
+      end
+    end
+    
     if task_to_run then
       -- Initialize the callback task if it doesn't exist in M.tasks
       if not M.tasks[callback] then
