@@ -10,6 +10,7 @@ A powerful, asynchronous Git commit workflow enhancement plugin for Neovim 0.11+
 - **Automatic Activation**: Runs when you open a Git commit buffer
 - **Asynchronous Task Runner**: Execute tasks in parallel with dependency tracking
 - **Real-time UI Feedback**: Non-intrusive sticky header shows task progress and status
+- **Hierarchical Task Display**: Callback tasks are visually indented under their parent tasks
 - **Automatic Cleanup**: Force kills all running tasks when leaving the commit buffer
 - **Hierarchical Configuration**: Merge settings from plugin defaults, user config, and project-specific files
 - **Extensible Task System**: Create custom tasks or extend predefined ones
@@ -290,6 +291,16 @@ tasks = {
   },
 }
 ```
+
+**Status Window Display:**
+```
+Smart Commit Tasks
+Status: ✓ All tasks completed (2.34s)
+├ 󰉁 PNPM Lint ✗ Failed (1.12s)
+  └ 󰔧 PNPM Lint Fix ✓ Success (1.22s)
+```
+
+Note how the callback task (PNPM Lint Fix) is visually indented under its parent task (PNPM Lint).
 
 ### Conditional Task Execution
 

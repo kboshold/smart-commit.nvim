@@ -54,6 +54,7 @@ M.BORDERS = {
   BOTTOM = "└",
   VERTICAL = "│",
   HORIZONTAL = "─",
+  CALLBACK = "└", -- Special border for callback tasks (indented)
 }
 
 return M
