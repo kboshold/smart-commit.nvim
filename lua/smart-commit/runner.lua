@@ -34,6 +34,47 @@ local function safe_update_task_state(task_id, new_state)
   return false
 end
 
+-- Execute a task callback (either run another task or call a function)
+---@param callback string | function The callback to execute
+---@param result table The task result information
+---@param win_id number The window ID
+---@param all_tasks table All tasks configuration
+---@param config table The full configuration
+local function execute_callback(callback, result, win_id, all_tasks, config)
+  if type(callback) == "string" then
+    -- Callback is a task ID - run that task
+    local task_to_run = all_tasks[callback]
+    if task_to_run then
+      -- Initialize the callback task if it doesn't exist in M.tasks
+      if not M.tasks[callback] then
+        M.tasks[callback] = {
+          state = M.TASK_STATE.PENDING,
+          output = "",
+          start_time = 0,
+          depends_on = task_to_run.depends_on or {},
+        }
+      end
+      
+      -- Only run the callback task if it's not already running/completed
+      if M.tasks[callback].state == M.TASK_STATE.PENDING then
+        vim.schedule(function()
+          M.run_task(win_id, task_to_run, all_tasks, config)
+        end)
+      end
+    else
+      vim.notify("Callback task not found: " .. callback, vim.log.levels.WARN)
+    end
+  elseif type(callback) == "function" then
+    -- Callback is a function - call it with the result
+    vim.schedule(function()
+      local ok, err = pcall(callback, result)
+      if not ok then
+        vim.notify("Callback function error: " .. tostring(err), vim.log.levels.ERROR)
+      end
+    end)
+  end
+end
+
 -- Overall process timing
 M.process_start_time = 0
 
@@ -107,6 +148,19 @@ function M.run_task(win_id, task, all_tasks, config)
       local state_updated = safe_update_task_state(task.id, result and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED)
       if state_updated then
         M.tasks[task.id].end_time = vim.loop.now()
+        
+        -- Prepare result information for callbacks
+        local task_result = {
+          success = result,
+          output = M.tasks[task.id].output,
+        }
+        
+        -- Execute callbacks
+        if result and task.on_success then
+          execute_callback(task.on_success, task_result, win_id, all_tasks, config)
+        elseif not result and task.on_fail then
+          execute_callback(task.on_fail, task_result, win_id, all_tasks, config)
+        end
       end
       vim.schedule(function()
         M.update_ui(win_id, all_tasks, config)
@@ -135,12 +189,37 @@ function M.run_task(win_id, task, all_tasks, config)
 
     -- Process the result
     -- Only update state if the task hasn't been aborted
+    local success = false
+    local state_updated = false
+    
     if type(result) == "boolean" then
-      safe_update_task_state(task.id, result and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED)
+      success = result
+      state_updated = safe_update_task_state(task.id, result and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED)
     elseif type(result) == "table" and result.ok ~= nil then
-      safe_update_task_state(task.id, result.ok and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED)
+      success = result.ok
+      state_updated = safe_update_task_state(task.id, result.ok and M.TASK_STATE.SUCCESS or M.TASK_STATE.FAILED)
     else
-      safe_update_task_state(task.id, M.TASK_STATE.FAILED)
+      success = false
+      state_updated = safe_update_task_state(task.id, M.TASK_STATE.FAILED)
+    end
+
+    -- Execute callbacks if state was updated
+    if state_updated then
+      local task_result = {
+        success = success,
+        output = M.tasks[task.id].output,
+      }
+      
+      if type(result) == "table" then
+        task_result.error_message = result.message
+      end
+      
+      -- Execute callbacks
+      if success and task.on_success then
+        execute_callback(task.on_success, task_result, win_id, all_tasks, config)
+      elseif not success and task.on_fail then
+        execute_callback(task.on_fail, task_result, win_id, all_tasks, config)
+      end
     end
 
     vim.schedule(function()
@@ -164,7 +243,19 @@ function M.run_task(win_id, task, all_tasks, config)
   if not cmd or cmd == "" then
     vim.notify("Empty command for task: " .. task.id .. ", marking as success", vim.log.levels.WARN)
     -- Only update state if the task hasn't been aborted
-    safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
+    local state_updated = safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
+    if state_updated then
+      M.tasks[task.id].end_time = vim.loop.now()
+      
+      -- Execute success callback
+      if task.on_success then
+        local task_result = {
+          success = true,
+          output = M.tasks[task.id].output,
+        }
+        execute_callback(task.on_success, task_result, win_id, all_tasks, config)
+      end
+    end
     vim.schedule(function()
       M.update_ui(win_id, all_tasks)
       M.update_signs(win_id)
@@ -187,7 +278,20 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
   -- Handle special commands like "exit 0" or "exit 1"
   if cmd == "exit 0" then
     -- Only update state if the task hasn't been aborted
-    safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
+    local state_updated = safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
+    if state_updated then
+      M.tasks[task.id].end_time = vim.loop.now()
+      
+      -- Execute success callback
+      if task.on_success then
+        local task_result = {
+          success = true,
+          exit_code = 0,
+          output = M.tasks[task.id].output,
+        }
+        execute_callback(task.on_success, task_result, win_id, all_tasks, config)
+      end
+    end
     vim.schedule(function()
       M.update_ui(win_id, all_tasks, config)
       M.update_signs(win_id)
@@ -195,7 +299,20 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
     return
   elseif cmd == "exit 1" then
     -- Only update state if the task hasn't been aborted
-    safe_update_task_state(task.id, M.TASK_STATE.FAILED)
+    local state_updated = safe_update_task_state(task.id, M.TASK_STATE.FAILED)
+    if state_updated then
+      M.tasks[task.id].end_time = vim.loop.now()
+      
+      -- Execute failure callback
+      if task.on_fail then
+        local task_result = {
+          success = false,
+          exit_code = 1,
+          output = M.tasks[task.id].output,
+        }
+        execute_callback(task.on_fail, task_result, win_id, all_tasks, config)
+      end
+    end
     vim.schedule(function()
       M.update_ui(win_id, all_tasks, config)
       M.update_signs(win_id)
@@ -241,11 +358,30 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
     -- Update task state based on exit code and set end_time
     M.tasks[task.id].end_time = vim.loop.now()
 
+    -- Prepare result information for callbacks
+    local task_result = {
+      success = obj.code == 0,
+      exit_code = obj.code,
+      output = M.tasks[task.id].output,
+      stdout = obj.stdout or "",
+      stderr = obj.stderr or "",
+    }
+
     -- Only update state if the task hasn't been aborted
+    local state_updated = false
     if obj.code == 0 then
-      safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
+      state_updated = safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
     else
-      safe_update_task_state(task.id, M.TASK_STATE.FAILED)
+      state_updated = safe_update_task_state(task.id, M.TASK_STATE.FAILED)
+    end
+
+    -- Execute callbacks if state was updated (not aborted)
+    if state_updated then
+      if task_result.success and task.on_success then
+        execute_callback(task.on_success, task_result, win_id, all_tasks, config)
+      elseif not task_result.success and task.on_fail then
+        execute_callback(task.on_fail, task_result, win_id, all_tasks, config)
+      end
     end
 
     -- Update UI with the final state

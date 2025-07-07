@@ -110,6 +110,18 @@ tasks = {
     env = {                    -- Environment variables
       NODE_ENV = "development"
     },
+    on_success = "success-task", -- Task ID to run on success, or function to call
+    on_fail = "failure-task",    -- Task ID to run on failure, or function to call
+    -- OR use functions for more control:
+    on_success = function(result)
+      -- result.success, result.exit_code, result.output, result.stdout, result.stderr
+      print("Task succeeded with exit code: " .. (result.exit_code or "N/A"))
+    end,
+    on_fail = function(result)
+      -- result.success, result.exit_code, result.output, result.stdout, result.stderr
+      print("Task failed with exit code: " .. (result.exit_code or "N/A"))
+      print("Error output: " .. (result.stderr or result.output or ""))
+    end,
   },
 
   -- Disable a task by setting it to false
@@ -123,6 +135,77 @@ tasks = {
 
   -- Use shorthand syntax for predefined tasks
   ["copilot:message"] = true,  -- Enable the predefined copilot:message task
+}
+```
+
+## Callback Examples
+
+### Automatic Lint Fixing
+
+Run a lint fix task when linting fails:
+
+```lua
+tasks = {
+  ["pnpm-lint-fix"] = {
+    extend = "pnpm",
+    label = "PNPM Lint Fix",
+    command = "eslint_d --fix .",
+  },
+  
+  ["pnpm-lint"] = {
+    extend = "pnpm",
+    label = "PNPM Lint",
+    command = "eslint_d --check .",
+    on_fail = "pnpm-lint-fix", -- Run lint fix if linting fails
+  },
+}
+```
+
+### Conditional Task Execution
+
+Use functions for more complex callback logic:
+
+```lua
+tasks = {
+  ["test"] = {
+    command = "npm test",
+    on_fail = function(result)
+      if result.exit_code == 1 then
+        -- Test failures - show detailed output
+        print("Tests failed with output:")
+        print(result.stderr or result.output)
+      else
+        -- Other errors - maybe run diagnostics
+        vim.notify("Test command failed: " .. (result.error_message or "Unknown error"))
+      end
+    end,
+    on_success = function(result)
+      vim.notify("All tests passed! ✅")
+    end,
+  },
+}
+```
+
+### Chained Task Execution
+
+Create complex workflows with task chaining:
+
+```lua
+tasks = {
+  ["build"] = {
+    command = "npm run build",
+    on_success = "deploy", -- Deploy only if build succeeds
+  },
+  
+  ["deploy"] = {
+    command = "npm run deploy",
+    on_success = function(result)
+      vim.notify("Deployment successful! 🚀")
+    end,
+    on_fail = function(result)
+      vim.notify("Deployment failed: " .. (result.stderr or "Unknown error"), vim.log.levels.ERROR)
+    end,
+  },
 }
 ```
 

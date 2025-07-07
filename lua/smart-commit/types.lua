@@ -19,8 +19,17 @@ local M = {}
 
 ---@alias TaskFn fun():(boolean | {ok: boolean, message: string})
 ---@alias ConditionFn fun():boolean
----@alias ErrorHandlerFn fun(err: string)
----@alias SuccessHandlerFn fun(result: any)
+
+---@class TaskResult
+---@field success boolean # Whether the task succeeded
+---@field exit_code? number # Exit code for shell commands
+---@field output? string # Combined stdout/stderr output
+---@field stderr? string # Standard error output
+---@field stdout? string # Standard output
+---@field error_message? string # Error message if any
+
+---@alias TaskCallbackFn fun(result: TaskResult): nil
+---@alias TaskCallback string | TaskCallbackFn # Either a task ID to run or a function to call
 
 ---@class TaskContext
 ---@field win_id number # The window ID of the commit buffer
@@ -43,8 +52,8 @@ local M = {}
 ---@field when? ConditionFn # Function to determine if the task should run. Must return true for the task to be scheduled.
 ---@field timeout? number # Timeout in milliseconds for this task.
 ---@field depends_on? string[] # List of task 'id's that must complete successfully first.
----@field on_error? ErrorHandlerFn # Callback for when the task fails.
----@field on_success? SuccessHandlerFn # Callback for when the task succeeds.
+---@field on_success? TaskCallback # Callback when task succeeds - either task ID to run or function to call.
+---@field on_fail? TaskCallback # Callback when task fails - either task ID to run or function to call.
 ---@field env? table<string, string> # Environment variables for the task's command.
 
 ---@class SmartCommitConfig
