@@ -42,17 +42,17 @@ function M.setup(opts)
     if opts.tasks then
       local predefined = require("smart-commit.predefined")
       local all_predefined_tasks = {}
-      
+
       -- Collect all registered predefined tasks
       for id, task in pairs(predefined.tasks) do
         all_predefined_tasks[id] = task
       end
-      
+
       -- Process setup tasks
       local processed_setup_tasks = config_loader.process_tasks(opts.tasks, all_predefined_tasks)
       opts.tasks = processed_setup_tasks
     end
-    
+
     M.config = vim.tbl_deep_extend("force", M.config, opts)
   end
 

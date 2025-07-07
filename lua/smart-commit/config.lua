@@ -40,14 +40,14 @@ M.defaults = {
 local function find_all_files_upwards(filename)
   local files = {}
   local current_dir = vim.fn.getcwd()
-  
+
   -- Collect all directories from current to root
   local directories = {}
   local dir = current_dir
-  
+
   while true do
     table.insert(directories, 1, dir) -- Insert at beginning to get root-to-current order
-    
+
     local parent_dir = vim.fn.fnamemodify(dir, ":h")
     if parent_dir == dir then
       -- We've reached the root directory
@@ -55,7 +55,7 @@ local function find_all_files_upwards(filename)
     end
     dir = parent_dir
   end
-  
+
   -- Check each directory for the config file
   for _, directory in ipairs(directories) do
     local path = directory .. "/" .. filename
@@ -63,7 +63,7 @@ local function find_all_files_upwards(filename)
       table.insert(files, path)
     end
   end
-  
+
   return files
 end
 
@@ -186,7 +186,7 @@ end
 function M.load_config()
   -- Refresh debug flag in case it was changed at runtime
   refresh_debug_flag()
-  
+
   local config = vim.deepcopy(M.defaults)
   local all_predefined_tasks = {}
   local all_configs = {}
@@ -233,7 +233,7 @@ function M.load_config()
         all_predefined_tasks[id] = task
         -- Register with the predefined tasks system
         predefined.register(id, task)
-        
+
         if debug_enabled then
           print("Smart Commit: Registered predefined task '" .. id .. "' from " .. config_entry.path)
         end
@@ -244,12 +244,12 @@ function M.load_config()
   -- 4. Process and merge all configurations
   for _, config_entry in ipairs(all_configs) do
     local cfg = config_entry.config
-    
+
     -- Process tasks with access to all predefined tasks
     if cfg.tasks then
       cfg.tasks = process_tasks(cfg.tasks, all_predefined_tasks)
     end
-    
+
     -- Merge configuration (later configs override earlier ones)
     config = vim.tbl_deep_extend("force", config, cfg)
   end
