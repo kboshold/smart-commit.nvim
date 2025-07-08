@@ -250,6 +250,13 @@ tasks = {
       print("Task failed with exit code: " .. (result.exit_code or "N/A"))
       print("Error output: " .. (result.stderr or result.output or ""))
     end,
+    -- OR use arrays for multiple callbacks:
+    on_success = {
+      "deploy-task",           -- First run a deployment task
+      function(result)         -- Then run a notification function
+        vim.notify("Deployment successful!")
+      end
+    },
   },
 
   -- Disable a task by setting it to false

@@ -65,13 +65,27 @@ local function safe_update_task_state(task_id, new_state)
 end
 
 -- Execute a task callback (either run another task or call a function)
----@param callback string | function The callback to execute
+---@param callback string | function | table The callback to execute (string, function, or array of callbacks)
 ---@param result table The task result information
 ---@param win_id number The window ID
 ---@param all_tasks table All tasks configuration
 ---@param config table The full configuration
 ---@param parent_task_id string|nil The ID of the task that triggered this callback
 local function execute_callback(callback, result, win_id, all_tasks, config, parent_task_id)
+  -- Handle array of callbacks
+  if type(callback) == "table" and not vim.is_callable(callback) then
+    if debug_enabled then
+      print("Smart Commit: Executing array of " .. #callback .. " callbacks")
+    end
+    
+    -- Execute each callback in the array
+    for _, single_callback in ipairs(callback) do
+      execute_callback(single_callback, result, win_id, all_tasks, config, parent_task_id)
+    end
+    return
+  end
+  
+  -- Handle string callback (task ID)
   if type(callback) == "string" then
     -- Callback is a task ID - run that task
     local task_to_run = all_tasks[callback]

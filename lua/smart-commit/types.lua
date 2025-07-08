@@ -29,7 +29,7 @@ local M = {}
 ---@field error_message? string # Error message if any
 
 ---@alias TaskCallbackFn fun(result: TaskResult): nil
----@alias TaskCallback string | TaskCallbackFn # Either a task ID to run or a function to call
+---@alias TaskCallback string | TaskCallbackFn | (string | TaskCallbackFn)[] # Either a task ID, a function, or an array of tasks/functions
 
 ---@class TaskContext
 ---@field win_id number # The window ID of the commit buffer
