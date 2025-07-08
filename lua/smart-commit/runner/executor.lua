@@ -65,13 +65,19 @@ function M.run_task(win_id, task, all_tasks, config)
   local cmd = M.get_command(task)
 
   -- If cmd is nil or empty, skip this task
-  if not cmd or cmd == "" then
+  if not cmd or (type(cmd) == "string" and cmd == "") or (type(cmd) == "table" and #cmd == 0) then
     M.handle_empty_command(win_id, task, all_tasks, config)
     return
   end
 
-  -- Run the command
-  M.execute_command(win_id, buf_id, task, cmd, all_tasks, config)
+  -- Handle array of commands or single command
+  if type(cmd) == "table" then
+    -- Execute multiple commands in sequence
+    M.execute_command_sequence(win_id, buf_id, task, cmd, all_tasks, config)
+  else
+    -- Execute single command
+    M.execute_command(win_id, buf_id, task, cmd, all_tasks, config)
+  end
 end
 
 -- Execute a handler-based task
@@ -239,16 +245,121 @@ function M.execute_command(win_id, buf_id, task, cmd, all_tasks, config)
   ui_manager.update_signs(win_id)
 end
 
+-- Execute a sequence of commands for a task
+---@param win_id number The window ID
+---@param buf_id number The buffer ID
+---@param task SmartCommitTask The task
+---@param commands table Array of commands to execute
+---@param all_tasks table All tasks configuration
+---@param config table The configuration
+function M.execute_command_sequence(win_id, buf_id, task, commands, all_tasks, config)
+  if debug_enabled then
+    debug_module.log("Executing command sequence for task '" .. task.id .. "' with " .. #commands .. " commands")
+  end
+
+  -- Execute commands sequentially
+  local function execute_next_command(index)
+    if index > #commands then
+      -- All commands completed successfully
+      local state_updated = state.safe_update_task_state(task.id, state.TASK_STATE.SUCCESS)
+      if state_updated then
+        state.set_task_end_time(task.id)
+        local task_result = {
+          success = true,
+          exit_code = 0,
+          output = state.get_task(task.id).output,
+        }
+        M.handle_task_completion(task, task_result, win_id, all_tasks, config)
+      end
+      vim.schedule(function()
+        ui_manager.update_ui(win_id, all_tasks, config)
+        ui_manager.update_signs(win_id)
+        if state.all_tasks_complete() then
+          timers.stop_ui_updates()
+        end
+      end)
+      return
+    end
+
+    local current_cmd = commands[index]
+
+    -- Skip empty commands
+    if not current_cmd or current_cmd == "" then
+      execute_next_command(index + 1)
+      return
+    end
+
+    if debug_enabled then
+      debug_module.log(
+        "Executing command " .. index .. "/" .. #commands .. " for task '" .. task.id .. "': " .. current_cmd
+      )
+    end
+
+    -- Add command separator to output for clarity
+    if index > 1 then
+      state.append_task_output(task.id, "\n--- Command " .. index .. " ---\n")
+    end
+
+    -- Handle special commands
+    if current_cmd == "exit 0" then
+      execute_next_command(index + 1)
+      return
+    elseif current_cmd == "exit 1" then
+      -- Command sequence fails
+      local state_updated = state.safe_update_task_state(task.id, state.TASK_STATE.FAILED)
+      if state_updated then
+        state.set_task_end_time(task.id)
+        local task_result = {
+          success = false,
+          exit_code = 1,
+          output = state.get_task(task.id).output,
+        }
+        M.handle_task_completion(task, task_result, win_id, all_tasks, config)
+      end
+      vim.schedule(function()
+        ui_manager.update_ui(win_id, all_tasks, config)
+        ui_manager.update_signs(win_id)
+      end)
+      return
+    end
+
+    -- Execute the current command using the process manager
+    processes.run_command(win_id, task, current_cmd, all_tasks, config, function(cmd_result)
+      if cmd_result.success then
+        -- Command succeeded, continue to next command
+        execute_next_command(index + 1)
+      else
+        -- Command failed, stop sequence and mark task as failed
+        local state_updated = state.safe_update_task_state(task.id, state.TASK_STATE.FAILED)
+        if state_updated then
+          state.set_task_end_time(task.id)
+          M.handle_task_completion(task, cmd_result, win_id, all_tasks, config)
+        end
+        vim.schedule(function()
+          ui_manager.update_ui(win_id, all_tasks, config)
+          ui_manager.update_signs(win_id)
+          if state.all_tasks_complete() then
+            timers.stop_ui_updates()
+          end
+        end)
+      end
+    end)
+  end
+
+  -- Start executing the first command
+  execute_next_command(1)
+end
+
 -- Get the command to execute for a task
 ---@param task SmartCommitTask The task
----@return string|nil The command to execute
+---@return string|table|nil The command(s) to execute
 function M.get_command(task)
   local cmd
   if type(task.command) == "function" then
     -- If command is a function, call it with the task as argument
     cmd = task.command(task)
   else
-    -- Otherwise use the command string directly
+    -- Otherwise use the command directly (string or array)
     cmd = task.command
   end
   return cmd

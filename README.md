@@ -218,6 +218,12 @@ tasks = {
     icon = "󰉁",               -- Icon to display (Nerd Font recommended)
     command = "echo 'hello'",  -- Shell command to execute
     -- OR
+    command = {                -- Array of commands to execute sequentially
+      "echo 'Step 1'",
+      "npm install",
+      "echo 'Step 2'",
+    },
+    -- OR
     fn = function()            -- Lua function to execute
       -- Do something
       return true              -- Return true for success, false for failure
@@ -515,6 +521,70 @@ Tasks can be in one of the following states:
 - **Failed**: Task failed to complete
 - **Aborted**: Task was killed/aborted by user
 - **Skipped**: Task was skipped due to conditions
+
+## Command Arrays
+
+Smart Commit supports executing multiple commands sequentially within a single task by using an array of commands:
+
+```lua
+tasks = {
+  ["build-and-test"] = {
+    id = "build-and-test",
+    label = "Build and Test",
+    command = {
+      "echo 'Starting build process...'",
+      "npm run build",
+      "echo 'Build complete, running tests...'",
+      "npm test",
+      "echo 'All steps completed successfully!'",
+    },
+  },
+}
+```
+
+### Array Command Behavior
+
+- **Sequential Execution**: Commands are executed one after another in the order specified
+- **Failure Handling**: If any command fails (non-zero exit code), the entire sequence stops and the task is marked as failed
+- **Output Aggregation**: Output from all commands is combined and displayed together
+- **Command Separators**: Each command's output is automatically separated for clarity
+
+### Dynamic Command Arrays
+
+You can also use functions to generate command arrays dynamically:
+
+```lua
+tasks = {
+  ["dynamic-sequence"] = {
+    id = "dynamic-sequence",
+    label = "Dynamic Sequence",
+    command = function()
+      local commands = {"echo 'Starting...'"}
+      
+      -- Add conditional commands based on environment
+      if vim.fn.executable("pnpm") == 1 then
+        table.insert(commands, "pnpm install")
+        table.insert(commands, "pnpm build")
+      else
+        table.insert(commands, "npm install")
+        table.insert(commands, "npm run build")
+      end
+      
+      table.insert(commands, "echo 'Process complete!'")
+      return commands
+    end,
+  },
+}
+```
+
+### Use Cases
+
+Command arrays are particularly useful for:
+
+- **Multi-step build processes**: Compile, bundle, and optimize in sequence
+- **Setup and teardown**: Prepare environment, run task, clean up
+- **Conditional workflows**: Execute different commands based on conditions
+- **Progress reporting**: Add echo commands between steps for better visibility
 
 ## Creating Custom Tasks
 

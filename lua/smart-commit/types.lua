@@ -45,7 +45,7 @@ local M = {}
 ---@field label string # Human-readable name for the UI.
 ---@field extend? string # ID of a predefined task to extend. Overrides properties from the base task.
 ---@field icon? string # Icon to display (Nerd Font recommended).
----@field command? string | fun():string # Shell command to execute.
+---@field command? string | string[] | fun():string | fun():string[] # Shell command(s) to execute. Can be a single command or array of commands to run sequentially.
 ---@field fn? TaskFn # Lua function to execute. (Alternative to 'command').
 ---@field handler? TaskHandlerFn # Advanced handler function with access to context. Takes precedence over command and fn.
 ---@field cwd? string # Working directory for this specific task.
