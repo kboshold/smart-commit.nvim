@@ -10,6 +10,7 @@ A powerful, asynchronous Git commit workflow enhancement plugin for Neovim 0.11+
 - **Automatic Activation**: Runs when you open a Git commit buffer
 - **Asynchronous Task Runner**: Execute tasks in parallel with dependency tracking
 - **Real-time UI Feedback**: Non-intrusive sticky header shows task progress and status
+- **Expandable Task Output**: Click or press Enter on tasks to view detailed command output
 - **Hierarchical Task Display**: Callback tasks are visually indented under their parent tasks
 - **Automatic Cleanup**: Force kills all running tasks when leaving the commit buffer
 - **Hierarchical Configuration**: Merge settings from plugin defaults, user config, and project-specific files
@@ -459,6 +460,17 @@ Smart Commit provides several user commands for easy access:
 - `:SmartCommitEnable` - Enable auto-run
 - `:SmartCommitDisable` - Disable auto-run
 
+### Interactive Controls
+
+When the Smart Commit UI is active, you can interact with tasks:
+
+- **`<Enter>`** - Toggle task output expansion on the current line
+- **`<LeftMouse>`** - Click on any task line to toggle its output
+- **Visual Indicators**: 
+  - `▶` - Task has output available (collapsed)
+  - `▼` - Task output is currently expanded
+  - No indicator - Task has no output to display
+
 ## API
 
 Smart Commit provides a public API for programmatic usage:
@@ -509,6 +521,49 @@ You can also manually control tasks using the API:
 -- Kill all running tasks immediately
 require("smart-commit").kill_all_tasks()
 ```
+
+## Expandable Task Output
+
+Smart Commit provides an interactive UI that allows you to view detailed output from your tasks without cluttering the interface.
+
+### **Visual Indicators**
+
+- **▶** - Task has output available (collapsed)
+- **▼** - Task output is currently expanded
+- **No indicator** - Task has no output to display
+
+### **Interaction Methods**
+
+- **Enter Key**: Press `<Enter>` on any task line to toggle its output
+- **Mouse Click**: Click on any task line to toggle its output
+
+### **Output Display**
+
+When expanded, task output is displayed with:
+- **Proper Indentation**: Output is indented for visual clarity
+- **Multi-line Support**: Each line of output is displayed separately
+- **Command Separators**: For array commands, each command's output is clearly separated
+- **Automatic Formatting**: Long lines are preserved as-is for accurate debugging
+
+### **Example**
+
+```
+Smart Commit Tasks
+Status: ✓ All tasks completed (2.34s)
+├ ▼ 󰉁 PNPM Lint ✓ Success (1.12s)
+    Command executed successfully
+    Found 0 errors, 2 warnings
+    All files processed
+├ ▶ 󰙨 PNPM Test ✓ Success (0.89s)
+└   No output indicator for tasks without output
+```
+
+### **Benefits**
+
+- **Clean Interface**: Only show output when needed
+- **Easy Debugging**: Quickly access command output for failed tasks
+- **Efficient Workflow**: Toggle output without leaving the commit buffer
+- **Context Preservation**: Output stays visible until manually collapsed
 
 ## Task States
 

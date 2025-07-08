@@ -12,6 +12,17 @@ local header_states = {}
 ---@type table<number, {win_id: number, buf_id: number, is_visible: boolean}>
 local analysis_windows = {}
 
+--- Gets the header buffer ID for a target window
+---@param target_win_id number The window ID of the target window
+---@return number|nil The header buffer ID, or nil if not found
+function M.get_header_buffer_id(target_win_id)
+  local state = header_states[target_win_id]
+  if state and state.header_buf_id and vim.api.nvim_buf_is_valid(state.header_buf_id) then
+    return state.header_buf_id
+  end
+  return nil
+end
+
 --- Creates a split window for analysis results on the right side of the commit buffer
 ---@param target_win_id number The window ID of the commit buffer
 ---@param title string The title for the analysis window

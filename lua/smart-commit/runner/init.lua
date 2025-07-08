@@ -21,6 +21,10 @@ M.tasks = state.tasks
 -- Process timing
 M.process_start_time = 0
 
+-- Store current tasks and config for UI refresh
+M.current_tasks = nil
+M.current_config = nil
+
 -- Initialize the runner
 local function initialize()
   ui_manager.setup_signs()
@@ -40,6 +44,10 @@ end
 ---@param tasks table<string, SmartCommitTask|false> The tasks to run
 ---@param config SmartCommitConfig|nil The full configuration
 function M.run_tasks_with_dependencies(win_id, tasks, config)
+  -- Store current tasks and config for UI refresh
+  M.current_tasks = tasks
+  M.current_config = config
+
   -- Set the process start time
   M.process_start_time = vim.loop.now()
 

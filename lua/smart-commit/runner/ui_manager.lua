@@ -12,6 +12,141 @@ local debug_enabled = vim.env.SMART_COMMIT_DEBUG == "1"
 ---@class SmartCommitRunnerUIManager
 local M = {}
 
+-- Track expanded tasks per window
+---@type table<number, table<string, boolean>>
+local expanded_tasks = {}
+
+-- Track line to task ID mapping per window
+---@type table<number, table<number, string>>
+local line_to_task_map = {}
+
+-- Toggle task expansion state
+---@param win_id number The window ID
+---@param task_id string The task ID to toggle
+function M.toggle_task_expansion(win_id, task_id)
+  if not expanded_tasks[win_id] then
+    expanded_tasks[win_id] = {}
+  end
+
+  expanded_tasks[win_id][task_id] = not expanded_tasks[win_id][task_id]
+
+  -- Trigger UI update by calling the update_ui function
+  vim.schedule(function()
+    -- We need to get the current tasks and config to refresh the UI
+    -- Get them from the runner module
+    local runner = require("smart-commit.runner")
+    if runner.current_tasks and runner.current_config then
+      M.update_ui(win_id, runner.current_tasks, runner.current_config)
+    end
+  end)
+end
+
+-- Check if a task is expanded
+---@param win_id number The window ID
+---@param task_id string The task ID
+---@return boolean True if the task is expanded
+function M.is_task_expanded(win_id, task_id)
+  return expanded_tasks[win_id] and expanded_tasks[win_id][task_id] or false
+end
+
+-- Setup click handlers for task lines
+---@param target_win_id number The target window ID (commit buffer)
+---@param header_buf_id number The header buffer ID
+function M.setup_task_click_handlers(target_win_id, header_buf_id)
+  -- Get the header window ID
+  local header_win_id = nil
+  for _, win_id in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(win_id) and vim.api.nvim_win_get_buf(win_id) == header_buf_id then
+      header_win_id = win_id
+      break
+    end
+  end
+
+  if not header_win_id then
+    -- If we can't find the header window, skip setting up handlers
+    return
+  end
+
+  -- Set up key mapping for toggling task expansion
+  vim.api.nvim_buf_set_keymap(header_buf_id, "n", "<CR>", "", {
+    noremap = true,
+    silent = true,
+    callback = function()
+      -- Check if header window is still valid
+      if not vim.api.nvim_win_is_valid(header_win_id) then
+        return
+      end
+      local line = vim.api.nvim_win_get_cursor(header_win_id)[1]
+      local task_id = M.get_task_id_from_line(target_win_id, header_buf_id, line)
+      if task_id then
+        M.toggle_task_expansion(target_win_id, task_id)
+      end
+    end,
+    desc = "Toggle task output expansion",
+  })
+
+  -- Also set up mouse click
+  vim.api.nvim_buf_set_keymap(header_buf_id, "n", "<LeftMouse>", "", {
+    noremap = true,
+    silent = true,
+    callback = function()
+      -- Get mouse position
+      local mouse_pos = vim.fn.getmousepos()
+      if mouse_pos.winid == header_win_id and vim.api.nvim_win_is_valid(header_win_id) then
+        local task_id = M.get_task_id_from_line(target_win_id, header_buf_id, mouse_pos.line)
+        if task_id then
+          M.toggle_task_expansion(target_win_id, task_id)
+        end
+      end
+    end,
+    desc = "Toggle task output expansion with mouse",
+  })
+end
+
+-- Extract task ID from a line in the UI buffer
+---@param win_id number The window ID
+---@param buf_id number The buffer ID
+---@param line_num number The line number
+---@return string|nil The task ID if found
+function M.get_task_id_from_line(win_id, buf_id, line_num)
+  -- Use the line to task mapping we built during UI creation
+  if line_to_task_map[win_id] and line_to_task_map[win_id][line_num] then
+    return line_to_task_map[win_id][line_num]
+  end
+
+  return nil
+end
+
+-- Format task output for display
+---@param task_id string The task ID
+---@param output string The raw output
+---@return table Formatted output lines
+function M.format_task_output(task_id, output)
+  if not output or output == "" then
+    return {
+      { text = "    No output available", highlight_group = "Comment" },
+    }
+  end
+
+  local lines = {}
+  local output_lines = vim.split(output, "\n")
+
+  for i, line in ipairs(output_lines) do
+    -- Skip empty lines at the end
+    if i == #output_lines and line == "" then
+      break
+    end
+
+    -- Add indentation and formatting
+    table.insert(lines, {
+      { text = "    ", highlight_group = "Comment" },
+      { text = line, highlight_group = "Normal" },
+    })
+  end
+
+  return lines
+end
+
 -- Define signs for the sign column
 function M.setup_signs()
   vim.fn.sign_define("SmartCommitRunning", { text = utils.ICONS.RUNNING, texthl = "DiagnosticInfo" })
@@ -94,10 +229,19 @@ function M.update_ui(win_id, tasks, config)
   M.add_status_line(content)
 
   -- Add task status lines
-  M.add_task_lines(content, tasks, config)
+  M.add_task_lines(content, tasks, config, win_id)
 
   -- Update the header
   ui.set(win_id, content)
+
+  -- Set up click handlers for task expansion on the header buffer
+  local header_buf_id = ui.get_header_buffer_id(win_id)
+  if header_buf_id then
+    -- Use pcall to handle potential errors in headless mode
+    pcall(function()
+      M.setup_task_click_handlers(win_id, header_buf_id)
+    end)
+  end
 end
 
 -- Add status line to content
@@ -170,7 +314,11 @@ end
 ---@param content table The content table to add to
 ---@param tasks table The tasks configuration
 ---@param config table The configuration
-function M.add_task_lines(content, tasks, config)
+---@param win_id number The window ID
+function M.add_task_lines(content, tasks, config, win_id)
+  -- Initialize line to task mapping for this window
+  line_to_task_map[win_id] = {}
+
   -- Get task keys and sort them (with callback tasks after their parents)
   local task_keys = {}
   for id, _ in pairs(state.tasks) do
@@ -235,7 +383,12 @@ function M.add_task_lines(content, tasks, config)
       not (task_state.state == state.TASK_STATE.SKIPPED and config and config.defaults and config.defaults.hide_skipped)
     then
       visible_tasks = visible_tasks + 1
-      M.add_single_task_line(content, id, task_state, tasks, visible_tasks == total_visible_tasks)
+
+      -- Track which line this task will be on (accounting for header lines)
+      local line_number = #content + 1
+      line_to_task_map[win_id][line_number] = id
+
+      M.add_single_task_line(content, id, task_state, tasks, visible_tasks == total_visible_tasks, win_id)
     end
   end
 end
@@ -246,14 +399,16 @@ end
 ---@param task_state table The task state
 ---@param tasks table The tasks configuration
 ---@param is_last boolean Whether this is the last visible task
-function M.add_single_task_line(content, id, task_state, tasks, is_last)
+---@param win_id number|nil The window ID (for expansion state)
+function M.add_single_task_line(content, id, task_state, tasks, is_last, win_id)
   local status_text = ""
   local status_hl = ""
   local border_char = utils.BORDERS.MIDDLE
   local task_config = tasks[id]
 
-  -- Use bottom border for the last visible task
-  if is_last then
+  -- Use bottom border for the last visible task (but only if not expanded)
+  local is_expanded = win_id and M.is_task_expanded(win_id, id) or false
+  if is_last and not is_expanded then
     border_char = utils.BORDERS.BOTTOM
   end
 
@@ -355,11 +510,33 @@ function M.add_single_task_line(content, id, task_state, tasks, is_last)
     end
   end
 
+  -- Add expansion indicator for tasks with output
+  local has_output = task_state.output and task_state.output ~= ""
+  local expansion_indicator = ""
+  if has_output then
+    expansion_indicator = is_expanded and "▼ " or "▶ "
+  end
+
   table.insert(content, {
     { text = border_prefix .. " ", highlight_group = "Comment" },
+    { text = expansion_indicator, highlight_group = "Special" },
     { text = indent .. display_text .. " ", highlight_group = is_callback and "DiagnosticHint" or "Identifier" },
     { text = status_text, highlight_group = status_hl },
   })
+
+  -- Add expanded output if task is expanded
+  if is_expanded and has_output then
+    local output_lines = M.format_task_output(id, task_state.output)
+    for _, output_line in ipairs(output_lines) do
+      table.insert(content, output_line)
+    end
+
+    -- Add a separator line after expanded output
+    table.insert(content, {
+      { text = utils.BORDERS.VERTICAL .. " ", highlight_group = "Comment" },
+      { text = string.rep("─", 40), highlight_group = "Comment" },
+    })
+  end
 end
 
 return M
