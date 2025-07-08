@@ -36,7 +36,7 @@ local function ensure_debug_window(win_id)
     or not vim.api.nvim_win_is_valid(single_debug_window.win_id or 0)
   then
     -- Create a new debug window with current logs
-    local content = "=== Smart Commit Log ===\n\n" .. M.get_logs()
+    local content = "# Smart Commit Log\n\n" .. M.get_logs()
     M.show_window(win_id, "Smart Commit Log", content)
   end
 end
@@ -54,9 +54,9 @@ function M.log(message, level, is_output)
   -- Format the log entry
   local entry
   if is_output then
-    entry = string.format("[%s] [%s] Command Output:\n```\n%s\n```", timestamp, level, message)
+    entry = string.format("### [%s] [%s] Command Output\n```\n%s\n```", timestamp, level, message)
   else
-    entry = string.format("[%s] [%s] %s", timestamp, level, message)
+    entry = string.format("- **[%s] [%s]** %s", timestamp, level, message)
   end
 
   -- Add to log entries
@@ -86,7 +86,7 @@ function M.log(message, level, is_output)
         -- Schedule the update to avoid fast event context issues
         vim.schedule(function()
           -- Get all logs
-          local content = "=== Smart Commit Log ===\n\n" .. M.get_logs()
+          local content = "# Smart Commit Log\n\n" .. M.get_logs()
 
           -- Update the window content
           local buf_id = single_debug_window.buf_id
@@ -122,7 +122,7 @@ function M.show_log_window(force)
   local current_win = vim.api.nvim_get_current_win()
 
   -- Create log content
-  local content = "=== Smart Commit Log ===\n\n" .. M.get_logs()
+  local content = "# Smart Commit Log\n\n" .. M.get_logs()
 
   -- Show the window
   if
@@ -152,10 +152,10 @@ end
 ---@param content table The current header content
 ---@return string The combined debug information
 function M.collect_information(content)
-  local debug_content = "=== Smart Commit Debug Information ===\n\n"
+  local debug_content = "# Smart Commit Debug Information\n\n"
 
   -- Add task status information
-  debug_content = debug_content .. "=== Task Status ===\n"
+  debug_content = debug_content .. "## Task Status\n"
   for _, line in ipairs(content) do
     local line_text = ""
     for _, chunk in ipairs(line) do
@@ -165,18 +165,18 @@ function M.collect_information(content)
   end
 
   -- Add configuration information
-  debug_content = debug_content .. "\n=== Configuration ===\n"
+  debug_content = debug_content .. "\n## Configuration\n"
   local config = require("smart-commit").config
   if config then
-    debug_content = debug_content .. "Auto Run: " .. tostring(config.defaults.auto_run) .. "\n"
-    debug_content = debug_content .. "Sign Column: " .. tostring(config.defaults.sign_column) .. "\n"
-    debug_content = debug_content .. "Hide Skipped: " .. tostring(config.defaults.hide_skipped) .. "\n"
+    debug_content = debug_content .. "- **Auto Run**: " .. tostring(config.defaults.auto_run) .. "\n"
+    debug_content = debug_content .. "- **Sign Column**: " .. tostring(config.defaults.sign_column) .. "\n"
+    debug_content = debug_content .. "- **Hide Skipped**: " .. tostring(config.defaults.hide_skipped) .. "\n"
 
     -- List tasks
-    debug_content = debug_content .. "\nConfigured Tasks:\n"
+    debug_content = debug_content .. "\n### Configured Tasks\n"
     for id, task in pairs(config.tasks or {}) do
       if type(task) == "table" then
-        debug_content = debug_content .. "- " .. id
+        debug_content = debug_content .. "- `" .. id .. "`"
         if task.label then
           debug_content = debug_content .. " (" .. task.label .. ")"
         end
@@ -186,31 +186,31 @@ function M.collect_information(content)
   end
 
   -- Add task details
-  debug_content = debug_content .. "\n=== Task Details ===\n"
+  debug_content = debug_content .. "\n## Task Details\n"
   local runner = require("smart-commit.runner")
   for id, task in pairs(runner.tasks or {}) do
-    debug_content = debug_content .. "Task: " .. id .. "\n"
-    debug_content = debug_content .. "  State: " .. (task.state or "unknown") .. "\n"
+    debug_content = debug_content .. "### Task: `" .. id .. "`\n"
+    debug_content = debug_content .. "- **State**: " .. (task.state or "unknown") .. "\n"
 
     -- Add timing information
     if task.start_time and task.start_time > 0 then
       local elapsed_ms = (task.end_time or vim.loop.now()) - task.start_time
-      debug_content = debug_content .. "  Time: " .. string.format("%.2fs", elapsed_ms / 1000) .. "\n"
+      debug_content = debug_content .. "- **Time**: " .. string.format("%.2fs", elapsed_ms / 1000) .. "\n"
     end
 
     -- Add dependency information
     if task.depends_on and #task.depends_on > 0 then
-      debug_content = debug_content .. "  Dependencies: " .. table.concat(task.depends_on, ", ") .. "\n"
+      debug_content = debug_content .. "- **Dependencies**: " .. table.concat(task.depends_on, ", ") .. "\n"
     end
 
     -- Add callback information
     if task.is_callback then
-      debug_content = debug_content .. "  Callback of: " .. (task.parent_task or "unknown") .. "\n"
+      debug_content = debug_content .. "- **Callback of**: " .. (task.parent_task or "unknown") .. "\n"
     end
 
     -- Add output if available
     if task.output and task.output ~= "" then
-      debug_content = debug_content .. "  Output:\n```\n" .. task.output .. "\n```\n"
+      debug_content = debug_content .. "- **Output**:\n```\n" .. task.output .. "\n```\n"
     end
 
     debug_content = debug_content .. "\n"
