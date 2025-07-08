@@ -103,12 +103,11 @@ end
 -- Add status line to content
 ---@param content table The content table to add to
 function M.add_status_line(content)
-  -- Check if any task is running
-  local any_running = false
+  -- Count running tasks
+  local running_count = 0
   for _, task in pairs(state.tasks) do
     if task.state == state.TASK_STATE.RUNNING then
-      any_running = true
-      break
+      running_count = running_count + 1
     end
   end
 
@@ -117,15 +116,19 @@ function M.add_status_line(content)
   local process_start_time = runner.process_start_time or 0
 
   -- Add status line with spinner if any task is running
-  if any_running then
+  if running_count > 0 then
     -- Calculate elapsed time so far
     local elapsed_ms = process_start_time > 0 and vim.loop.now() - process_start_time or 0
     local elapsed_text = string.format(" (%.2fs)", elapsed_ms / 1000)
 
+    -- Create task count text
+    local task_text = running_count == 1 and "task" or "tasks"
+    local status_text = string.format("Running %d %s...%s", running_count, task_text, elapsed_text)
+
     table.insert(content, {
       { text = "Status: ", highlight_group = "Label" },
       {
-        text = utils.get_current_spinner_frame() .. " Running tasks..." .. elapsed_text,
+        text = utils.get_current_spinner_frame() .. " " .. status_text,
         highlight_group = "DiagnosticInfo",
       },
     })
