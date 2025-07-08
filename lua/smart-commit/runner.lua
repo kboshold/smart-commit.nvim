@@ -77,25 +77,25 @@ local function execute_callback(callback, result, win_id, all_tasks, config, par
     if debug_enabled then
       print("Smart Commit: Executing array of " .. #callback .. " callbacks")
     end
-    
+
     -- Execute each callback in the array
     for i, single_callback in ipairs(callback) do
       -- For the first callback in the array, use the original parent
       -- For subsequent callbacks, use the previous callback as parent
       local effective_parent = parent_task_id
-      if i > 1 and type(callback[i-1]) == "string" then
+      if i > 1 and type(callback[i - 1]) == "string" then
         -- If the previous callback was a task (string), use it as the parent
-        effective_parent = callback[i-1]
+        effective_parent = callback[i - 1]
         if debug_enabled then
           print("Smart Commit: Using previous callback '" .. effective_parent .. "' as parent for callback #" .. i)
         end
       end
-      
+
       execute_callback(single_callback, result, win_id, all_tasks, config, effective_parent)
     end
     return
   end
-  
+
   -- Handle string callback (task ID)
   if type(callback) == "string" then
     -- Callback is a task ID - run that task
@@ -856,12 +856,12 @@ function M.update_ui(win_id, tasks, config)
       local indent = ""
       local border_prefix = border_char
       local is_callback = task_state.is_callback == true -- Handle nil as false
-      
+
       -- Calculate the nesting level for proper indentation
       local nesting_level = 0
       local current_task = task_state
       local parent_id = current_task.parent_task
-      
+
       -- Traverse up the parent chain to determine nesting level
       while is_callback and parent_id do
         nesting_level = nesting_level + 1
@@ -873,7 +873,7 @@ function M.update_ui(win_id, tasks, config)
         -- Move up to the next level
         parent_id = parent_task.parent_task
       end
-      
+
       if is_callback then
         if debug_enabled then
           print(
@@ -886,7 +886,7 @@ function M.update_ui(win_id, tasks, config)
               .. ")"
           )
         end
-        
+
         -- For callback tasks, add appropriate indentation based on nesting level
         if nesting_level > 1 then
           -- For nested callbacks (level 2+), add extra indentation
