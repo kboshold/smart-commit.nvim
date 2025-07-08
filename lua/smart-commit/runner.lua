@@ -79,8 +79,19 @@ local function execute_callback(callback, result, win_id, all_tasks, config, par
     end
     
     -- Execute each callback in the array
-    for _, single_callback in ipairs(callback) do
-      execute_callback(single_callback, result, win_id, all_tasks, config, parent_task_id)
+    for i, single_callback in ipairs(callback) do
+      -- For the first callback in the array, use the original parent
+      -- For subsequent callbacks, use the previous callback as parent
+      local effective_parent = parent_task_id
+      if i > 1 and type(callback[i-1]) == "string" then
+        -- If the previous callback was a task (string), use it as the parent
+        effective_parent = callback[i-1]
+        if debug_enabled then
+          print("Smart Commit: Using previous callback '" .. effective_parent .. "' as parent for callback #" .. i)
+        end
+      end
+      
+      execute_callback(single_callback, result, win_id, all_tasks, config, effective_parent)
     end
     return
   end
@@ -729,7 +740,15 @@ function M.update_ui(win_id, tasks, config)
     local task = M.tasks[task_id]
     if task.is_callback == true and task.parent_task then
       -- For callback tasks, use parent's sort key + callback suffix
-      return task.parent_task .. "_callback_" .. task_id
+      -- This ensures proper nesting of callbacks
+      local parent_task = M.tasks[task.parent_task]
+      if parent_task and parent_task.is_callback then
+        -- If parent is also a callback, get its sort key first to maintain hierarchy
+        return get_sort_key(task.parent_task) .. "_callback_" .. task_id
+      else
+        -- Otherwise use simple parent + callback format
+        return task.parent_task .. "_callback_" .. task_id
+      end
     else
       -- For regular tasks, use the task ID directly
       return task_id
@@ -837,7 +856,24 @@ function M.update_ui(win_id, tasks, config)
       local indent = ""
       local border_prefix = border_char
       local is_callback = task_state.is_callback == true -- Handle nil as false
-
+      
+      -- Calculate the nesting level for proper indentation
+      local nesting_level = 0
+      local current_task = task_state
+      local parent_id = current_task.parent_task
+      
+      -- Traverse up the parent chain to determine nesting level
+      while is_callback and parent_id do
+        nesting_level = nesting_level + 1
+        -- Get the parent task
+        local parent_task = M.tasks[parent_id]
+        if not parent_task then
+          break
+        end
+        -- Move up to the next level
+        parent_id = parent_task.parent_task
+      end
+      
       if is_callback then
         if debug_enabled then
           print(
@@ -845,11 +881,21 @@ function M.update_ui(win_id, tasks, config)
               .. id
               .. "' (parent: "
               .. (task_state.parent_task or "unknown")
+              .. ", nesting level: "
+              .. nesting_level
               .. ")"
           )
         end
-        -- For callback tasks, show vertical line connector + callback indicator
-        border_prefix = utils.BORDERS.VERTICAL .. " └"
+        
+        -- For callback tasks, add appropriate indentation based on nesting level
+        if nesting_level > 1 then
+          -- For nested callbacks (level 2+), add extra indentation
+          indent = string.rep("  ", nesting_level - 1)
+          border_prefix = utils.BORDERS.VERTICAL .. string.rep(" ", (nesting_level - 1) * 2) .. "└"
+        else
+          -- For first-level callbacks, use standard indentation
+          border_prefix = utils.BORDERS.VERTICAL .. " └"
+        end
       else
         if debug_enabled then
           print("Smart Commit: Regular task '" .. id .. "' (is_callback: " .. tostring(task_state.is_callback) .. ")")
