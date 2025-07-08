@@ -528,10 +528,10 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
       debug_module.log("Task '" .. task.id .. "' command: " .. cmd)
       debug_module.log("Task '" .. task.id .. "' exit code: " .. obj.code)
       if obj.stdout and obj.stdout ~= "" then
-        debug_module.log("Task '" .. task.id .. "' stdout:\n" .. obj.stdout)
+        debug_module.log(obj.stdout, "INFO", true)
       end
       if obj.stderr and obj.stderr ~= "" then
-        debug_module.log("Task '" .. task.id .. "' stderr:\n" .. obj.stderr)
+        debug_module.log(obj.stderr, "ERROR", true)
       end
 
       -- Update the debug window - use pcall to handle potential errors in fast event context

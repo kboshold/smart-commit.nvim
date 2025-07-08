@@ -27,17 +27,37 @@ function M.is_enabled()
   return debug_enabled
 end
 
+-- Ensure the debug window exists
+---@param win_id number The window ID to attach the debug window to
+local function ensure_debug_window(win_id)
+  if
+    not single_debug_window
+    or not single_debug_window.is_visible
+    or not vim.api.nvim_win_is_valid(single_debug_window.win_id or 0)
+  then
+    -- Create a new debug window with current logs
+    local content = "=== Smart Commit Log ===\n\n" .. M.get_logs()
+    M.show_window(win_id, "Smart Commit Log", content)
+  end
+end
+
 -- Log a message with timestamp
 ---@param message string The message to log
 ---@param level? string Optional log level (INFO, WARN, ERROR)
-function M.log(message, level)
+---@param is_output? boolean Whether this is command output that should be formatted with backticks
+function M.log(message, level, is_output)
   level = level or "INFO"
 
   -- Get current timestamp
   local timestamp = os.date("%Y-%m-%d %H:%M:%S")
 
   -- Format the log entry
-  local entry = string.format("[%s] [%s] %s", timestamp, level, message)
+  local entry
+  if is_output then
+    entry = string.format("[%s] [%s] Command Output:\n```\n%s\n```", timestamp, level, message)
+  else
+    entry = string.format("[%s] [%s] %s", timestamp, level, message)
+  end
 
   -- Add to log entries
   table.insert(log_entries, entry)
@@ -47,9 +67,41 @@ function M.log(message, level)
     table.remove(log_entries, 1)
   end
 
-  -- If debug mode is enabled, also print to console
+  -- If debug mode is enabled, update the debug window
   if debug_enabled then
-    print(entry)
+    -- Use pcall to handle potential errors in fast event contexts
+    pcall(function()
+      -- Get the current window
+      local current_win = vim.api.nvim_get_current_win()
+
+      -- Ensure we have a debug window
+      ensure_debug_window(current_win)
+
+      -- If we have an active debug window, update it
+      if
+        single_debug_window
+        and single_debug_window.is_visible
+        and vim.api.nvim_win_is_valid(single_debug_window.win_id)
+      then
+        -- Schedule the update to avoid fast event context issues
+        vim.schedule(function()
+          -- Get all logs
+          local content = "=== Smart Commit Log ===\n\n" .. M.get_logs()
+
+          -- Update the window content
+          local buf_id = single_debug_window.buf_id
+          if vim.api.nvim_buf_is_valid(buf_id) then
+            local lines = vim.split(content, "\n")
+            vim.api.nvim_buf_set_option(buf_id, "modifiable", true)
+            vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, lines)
+            vim.api.nvim_buf_set_option(buf_id, "modifiable", false)
+
+            -- Scroll to the bottom
+            vim.api.nvim_win_set_cursor(single_debug_window.win_id, { #lines, 0 })
+          end
+        end)
+      end
+    end)
   end
 end
 
@@ -73,7 +125,27 @@ function M.show_log_window(force)
   local content = "=== Smart Commit Log ===\n\n" .. M.get_logs()
 
   -- Show the window
-  M.show_window(current_win, "Smart Commit Log", content)
+  if
+    single_debug_window
+    and single_debug_window.is_visible
+    and vim.api.nvim_win_is_valid(single_debug_window.win_id)
+  then
+    -- Update existing window
+    M.update_window(current_win, content)
+  else
+    -- Create new window
+    M.show_window(current_win, "Smart Commit Log", content)
+  end
+
+  -- Scroll to the bottom if window exists
+  if
+    single_debug_window
+    and single_debug_window.is_visible
+    and vim.api.nvim_win_is_valid(single_debug_window.win_id)
+  then
+    local lines = vim.split(content, "\n")
+    vim.api.nvim_win_set_cursor(single_debug_window.win_id, { #lines, 0 })
+  end
 end
 
 -- Collect all debug information into a single string
@@ -138,7 +210,7 @@ function M.collect_information(content)
 
     -- Add output if available
     if task.output and task.output ~= "" then
-      debug_content = debug_content .. "  Output:\n" .. task.output .. "\n"
+      debug_content = debug_content .. "  Output:\n```\n" .. task.output .. "\n```\n"
     end
 
     debug_content = debug_content .. "\n"
