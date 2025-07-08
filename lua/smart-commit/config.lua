@@ -1,6 +1,7 @@
 -- Smart Commit Configuration System
 -- Author: kboshold
 
+local debug_module = require("smart-commit.debug")
 local predefined = require("smart-commit.predefined")
 
 local M = {}
@@ -209,16 +210,31 @@ function M.load_config()
 
   -- Debug: Show which config files were loaded
   if debug_enabled then
-    print("Smart Commit: Loading config files:")
+    debug_module.log("\n=== Smart Commit Debug Information ===")
+    debug_module.log("Smart Commit: Loading config files:")
     for _, config_entry in ipairs(all_configs) do
-      print("  - " .. config_entry.path)
+      debug_module.log("  - " .. config_entry.path)
       if config_entry.config.predefined_tasks then
         local predefined_count = vim.tbl_count(config_entry.config.predefined_tasks)
-        print("    → " .. predefined_count .. " predefined tasks")
+        debug_module.log("    → " .. predefined_count .. " predefined tasks")
+        -- List the predefined tasks
+        for id, _ in pairs(config_entry.config.predefined_tasks) do
+          debug_module.log("      - " .. id)
+        end
       end
       if config_entry.config.tasks then
         local tasks_count = vim.tbl_count(config_entry.config.tasks)
-        print("    → " .. tasks_count .. " tasks")
+        debug_module.log("    → " .. tasks_count .. " tasks")
+        -- List the tasks
+        for id, task in pairs(config_entry.config.tasks) do
+          if type(task) == "boolean" then
+            debug_module.log("      - " .. id .. " (" .. tostring(task) .. ")")
+          elseif type(task) == "table" and task.extend then
+            debug_module.log("      - " .. id .. " (extends: " .. task.extend .. ")")
+          else
+            debug_module.log("      - " .. id)
+          end
+        end
       end
     end
   end
@@ -235,7 +251,7 @@ function M.load_config()
         predefined.register(id, task)
 
         if debug_enabled then
-          print("Smart Commit: Registered predefined task '" .. id .. "' from " .. config_entry.path)
+          debug_module.log("Smart Commit: Registered predefined task '" .. id .. "' from " .. config_entry.path)
         end
       end
     end
@@ -255,7 +271,78 @@ function M.load_config()
   end
 
   if debug_enabled then
-    print("Smart Commit: Final config has " .. vim.tbl_count(config.tasks or {}) .. " tasks")
+    local task_count = vim.tbl_count(config.tasks or {})
+    debug_module.log("\n=== Smart Commit Final Configuration ===")
+    debug_module.log("Smart Commit: Final config has " .. task_count .. " tasks")
+
+    -- Print details about each task
+    debug_module.log("Tasks to be executed:")
+    for id, task in pairs(config.tasks or {}) do
+      if task == false then
+        debug_module.log("  - " .. id .. " (disabled)")
+      elseif type(task) == "table" then
+        local command_info = ""
+        if task.command then
+          if type(task.command) == "string" then
+            command_info = " - Command: " .. task.command
+          else
+            command_info = " - Command: [function]"
+          end
+        elseif task.fn then
+          command_info = " - Function: [function]"
+        elseif task.handler then
+          command_info = " - Handler: [function]"
+        end
+
+        local callback_info = ""
+        if task.on_success then
+          if type(task.on_success) == "string" then
+            callback_info = callback_info .. " - On Success: " .. task.on_success
+          elseif type(task.on_success) == "table" then
+            callback_info = callback_info
+              .. " - On Success: ["
+              .. table.concat(
+                vim.tbl_map(function(cb)
+                  if type(cb) == "string" then
+                    return cb
+                  else
+                    return "[function]"
+                  end
+                end, task.on_success),
+                ", "
+              )
+              .. "]"
+          else
+            callback_info = callback_info .. " - On Success: [function]"
+          end
+        end
+
+        if task.on_fail then
+          if type(task.on_fail) == "string" then
+            callback_info = callback_info .. " - On Fail: " .. task.on_fail
+          elseif type(task.on_fail) == "table" then
+            callback_info = callback_info
+              .. " - On Fail: ["
+              .. table.concat(
+                vim.tbl_map(function(cb)
+                  if type(cb) == "string" then
+                    return cb
+                  else
+                    return "[function]"
+                  end
+                end, task.on_fail),
+                ", "
+              )
+              .. "]"
+          else
+            callback_info = callback_info .. " - On Fail: [function]"
+          end
+        end
+
+        debug_module.log("  - " .. id .. command_info .. callback_info)
+      end
+    end
+    debug_module.log("=======================================\n")
   end
 
   return config

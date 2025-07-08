@@ -164,6 +164,17 @@ end
 -- Initialize autocommands
 setup_window_autocommands()
 
+--- Gets the current content for a given window.
+---@param target_win_id number The window to get content for.
+---@return StickyHeaderContent The current content or empty table if not found.
+function M.get_current_content(target_win_id)
+  local state = header_states[target_win_id]
+  if state and state.current_content then
+    return state.current_content
+  end
+  return {}
+end
+
 --- Sets or updates the header content for a given window.
 --- Creates the header if it doesn't exist.
 ---@param target_win_id number The window to attach the header to.
@@ -174,15 +185,35 @@ function M.set(target_win_id, content)
     return
   end
 
-  -- Get or create the header state for this window
+  -- Store the content for later reference (needed for debug window)
+  if not header_states[target_win_id] then
+    header_states[target_win_id] = {}
+  end
+  header_states[target_win_id].current_content = content
+
+  -- Always show the status window at the bottom
   local state = header_states[target_win_id]
-  if not state or not state.is_visible or not vim.api.nvim_win_is_valid(state.header_win_id) then
+  if
+    not state
+    or not state.is_visible
+    or not state.header_win_id
+    or not vim.api.nvim_win_is_valid(state.header_win_id or 0)
+  then
     state = M._create_header(target_win_id)
     header_states[target_win_id] = state
   end
 
   -- Update the content
   M._update_content(state, content)
+
+  -- If debug mode is enabled, also update the debug window
+  local debug = require("smart-commit.debug")
+  if debug.is_enabled() then
+    -- Use pcall to handle potential errors in fast event context
+    pcall(function()
+      debug.update(target_win_id, content)
+    end)
+  end
 end
 
 --- Toggles the header's visibility for a given window.

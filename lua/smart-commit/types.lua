@@ -77,6 +77,7 @@ local M = {}
 ---@field header_win_id number The window ID of the header split.
 ---@field header_buf_id number The buffer ID of the header split.
 ---@field target_win_id number The window ID of the buffer the header is attached to.
----@field is_visible boolean
+---@field is_visible boolean Whether the header is currently visible.
+---@field current_content StickyHeaderContent The current content being displayed.
 
 return M

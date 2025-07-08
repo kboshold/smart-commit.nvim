@@ -15,6 +15,9 @@ local function refresh_debug_flag()
   debug_enabled = vim.env.SMART_COMMIT_DEBUG == "1"
 end
 
+-- Get the debug module for logging
+local debug_module = require("smart-commit.debug")
+
 -- Task states
 M.TASK_STATE = {
   PENDING = "pending",
@@ -47,12 +50,8 @@ local function safe_update_task_state(task_id, new_state)
     if old_is_callback ~= nil then
       M.tasks[task_id].is_callback = old_is_callback
       if debug_enabled and old_is_callback then
-        print(
-          "Smart Commit: Preserving callback status for task '"
-            .. task_id
-            .. "' (parent: "
-            .. tostring(old_parent)
-            .. ")"
+        debug_module.log(
+          "Preserving callback status for task '" .. task_id .. "' (parent: " .. tostring(old_parent) .. ")"
         )
       end
     end
@@ -75,7 +74,7 @@ local function execute_callback(callback, result, win_id, all_tasks, config, par
   -- Handle array of callbacks
   if type(callback) == "table" and not vim.is_callable(callback) then
     if debug_enabled then
-      print("Smart Commit: Executing array of " .. #callback .. " callbacks")
+      debug_module.log("Executing array of " .. #callback .. " callbacks")
     end
 
     -- Execute each callback in the array
@@ -87,7 +86,7 @@ local function execute_callback(callback, result, win_id, all_tasks, config, par
         -- If the previous callback was a task (string), use it as the parent
         effective_parent = callback[i - 1]
         if debug_enabled then
-          print("Smart Commit: Using previous callback '" .. effective_parent .. "' as parent for callback #" .. i)
+          debug_module.log("Using previous callback '" .. effective_parent .. "' as parent for callback #" .. i)
         end
       end
 
@@ -107,7 +106,7 @@ local function execute_callback(callback, result, win_id, all_tasks, config, par
       local predefined_task = predefined.get(callback)
       if predefined_task then
         if debug_enabled then
-          print("Smart Commit: Using predefined task '" .. callback .. "' as callback")
+          debug_module.log("Using predefined task '" .. callback .. "' as callback")
         end
         -- Create a copy of the predefined task
         task_to_run = vim.deepcopy(predefined_task)
@@ -121,12 +120,8 @@ local function execute_callback(callback, result, win_id, all_tasks, config, par
       -- Initialize the callback task if it doesn't exist in M.tasks
       if not M.tasks[callback] then
         if debug_enabled then
-          print(
-            "Smart Commit: Creating NEW callback task '"
-              .. callback
-              .. "' for parent '"
-              .. (parent_task_id or "unknown")
-              .. "'"
+          debug_module.log(
+            "Creating NEW callback task '" .. callback .. "' for parent '" .. (parent_task_id or "unknown") .. "'"
           )
         end
         M.tasks[callback] = {
@@ -140,21 +135,21 @@ local function execute_callback(callback, result, win_id, all_tasks, config, par
       else
         -- If task already exists, mark it as a callback (preserve existing state)
         if debug_enabled then
-          print(
-            "Smart Commit: Marking EXISTING task '"
+          debug_module.log(
+            "Marking EXISTING task '"
               .. callback
               .. "' as callback for parent '"
               .. (parent_task_id or "unknown")
               .. "'"
           )
-          print(
+          debug_module.log(
             "Smart Commit: Task '" .. callback .. "' current is_callback: " .. tostring(M.tasks[callback].is_callback)
           )
         end
         M.tasks[callback].is_callback = true
         M.tasks[callback].parent_task = parent_task_id
         if debug_enabled then
-          print(
+          debug_module.log(
             "Smart Commit: Task '" .. callback .. "' updated is_callback: " .. tostring(M.tasks[callback].is_callback)
           )
         end
@@ -233,7 +228,7 @@ function M.run_task(win_id, task, all_tasks, config)
   }
 
   if debug_enabled and existing_is_callback then
-    print(
+    debug_module.log(
       "Smart Commit: Preserving callback status for task '"
         .. task.id
         .. "' in run_task (parent: "
@@ -279,7 +274,7 @@ function M.run_task(win_id, task, all_tasks, config)
         -- Execute callbacks
         if result and task.on_success then
           if debug_enabled then
-            print(
+            debug_module.log(
               "Smart Commit: Task '"
                 .. task.id
                 .. "' (handler) succeeded, executing on_success callback: "
@@ -289,7 +284,7 @@ function M.run_task(win_id, task, all_tasks, config)
           execute_callback(task.on_success, task_result, win_id, all_tasks, config, task.id)
         elseif not result and task.on_fail then
           if debug_enabled then
-            print(
+            debug_module.log(
               "Smart Commit: Task '"
                 .. task.id
                 .. "' (handler) failed, executing on_fail callback: "
@@ -487,7 +482,31 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
     options.env = task.env
   end
 
-  -- Run the task asynchronously
+  -- Log command execution in debug mode
+  if debug_enabled then
+    debug_module.log("Executing command for task '" .. task.id .. "': " .. cmd)
+    if task.cwd then
+      debug_module.log("Working directory: " .. task.cwd)
+    end
+    if task.env and type(task.env) == "table" then
+      debug_module.log("Environment variables:")
+      for k, v in pairs(task.env) do
+        debug_module.log("  " .. k .. "=" .. v)
+      end
+    end
+
+    -- Update the debug window - use pcall to handle potential errors in fast event context
+    pcall(function()
+      local debug = require("smart-commit.debug")
+      if debug.is_enabled() then
+        local ui = require("smart-commit.ui")
+        local content = ui.get_current_content and ui.get_current_content(win_id) or {}
+        debug.update(win_id, content)
+      end
+    end)
+  end
+
+  -- Run the command asynchronously
   local process = vim.system(cmd_parts, options, function(obj)
     -- Remove from active processes
     active_processes[task.id] = nil
@@ -504,15 +523,37 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
       stderr = obj.stderr or "",
     }
 
+    -- Log command output in debug mode
+    if debug_enabled then
+      debug_module.log("Task '" .. task.id .. "' command: " .. cmd)
+      debug_module.log("Task '" .. task.id .. "' exit code: " .. obj.code)
+      if obj.stdout and obj.stdout ~= "" then
+        debug_module.log("Task '" .. task.id .. "' stdout:\n" .. obj.stdout)
+      end
+      if obj.stderr and obj.stderr ~= "" then
+        debug_module.log("Task '" .. task.id .. "' stderr:\n" .. obj.stderr)
+      end
+
+      -- Update the debug window - use pcall to handle potential errors in fast event context
+      pcall(function()
+        local debug = require("smart-commit.debug")
+        if debug.is_enabled() then
+          local ui = require("smart-commit.ui")
+          local content = ui.get_current_content and ui.get_current_content(win_id) or {}
+          debug.update(win_id, content)
+        end
+      end)
+    end
+
     -- Only update state if the task hasn't been aborted
     local state_updated = false
     if obj.code == 0 then
       state_updated = safe_update_task_state(task.id, M.TASK_STATE.SUCCESS)
     else
       if debug_enabled then
-        print("Smart Commit: Task '" .. task.id .. "' failed with exit code " .. obj.code)
-        print("Smart Commit: Task '" .. task.id .. "' has on_fail: " .. tostring(task.on_fail))
-        print("Smart Commit: Task '" .. task.id .. "' has on_success: " .. tostring(task.on_success))
+        debug_module.log("Task '" .. task.id .. "' failed with exit code " .. obj.code)
+        debug_module.log("Task '" .. task.id .. "' has on_fail: " .. tostring(task.on_fail))
+        debug_module.log("Task '" .. task.id .. "' has on_success: " .. tostring(task.on_success))
       end
       state_updated = safe_update_task_state(task.id, M.TASK_STATE.FAILED)
     end
@@ -521,7 +562,7 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
     if state_updated then
       if task_result.success and task.on_success then
         if debug_enabled then
-          print(
+          debug_module.log(
             "Smart Commit: Task '"
               .. task.id
               .. "' succeeded, executing on_success callback: "
@@ -531,7 +572,7 @@ function M.run_command(win_id, buf_id, task, cmd, all_tasks, config)
         execute_callback(task.on_success, task_result, win_id, all_tasks, config, task.id)
       elseif not task_result.success and task.on_fail then
         if debug_enabled then
-          print("Smart Commit: Task '" .. task.id .. "' failed, executing on_fail callback: " .. tostring(task.on_fail))
+          debug_module.log("Task '" .. task.id .. "' failed, executing on_fail callback: " .. tostring(task.on_fail))
         end
         execute_callback(task.on_fail, task_result, win_id, all_tasks, config, task.id)
       end
@@ -760,7 +801,7 @@ function M.update_ui(win_id, tasks, config)
     local sort_key_b = get_sort_key(b)
 
     if debug_enabled then
-      print(
+      debug_module.log(
         "Smart Commit: Sorting - '" .. a .. "' (key: " .. sort_key_a .. ") vs '" .. b .. "' (key: " .. sort_key_b .. ")"
       )
     end
@@ -876,7 +917,7 @@ function M.update_ui(win_id, tasks, config)
 
       if is_callback then
         if debug_enabled then
-          print(
+          debug_module.log(
             "Smart Commit: Indenting callback task '"
               .. id
               .. "' (parent: "
@@ -898,7 +939,7 @@ function M.update_ui(win_id, tasks, config)
         end
       else
         if debug_enabled then
-          print("Smart Commit: Regular task '" .. id .. "' (is_callback: " .. tostring(task_state.is_callback) .. ")")
+          debug_module.log("Regular task '" .. id .. "' (is_callback: " .. tostring(task_state.is_callback) .. ")")
         end
       end
 
@@ -936,7 +977,7 @@ function M.run_tasks_with_dependencies(win_id, tasks, config)
   for id, task in pairs(tasks) do
     if task then -- Skip tasks that are set to false
       if debug_enabled then
-        print("Smart Commit: Initializing regular task '" .. id .. "'")
+        debug_module.log("Initializing regular task '" .. id .. "'")
       end
       -- Ensure we don't overwrite existing callback tasks
       if not M.tasks[id] then
@@ -953,7 +994,7 @@ function M.run_tasks_with_dependencies(win_id, tasks, config)
         local existing_is_callback = M.tasks[id].is_callback
         local existing_parent = M.tasks[id].parent_task
         if debug_enabled then
-          print(
+          debug_module.log(
             "Smart Commit: Task '"
               .. id
               .. "' already exists, preserving callback status: "
@@ -979,6 +1020,9 @@ function M.run_tasks_with_dependencies(win_id, tasks, config)
       local should_run = task.when()
       if not should_run then
         M.tasks[id].state = M.TASK_STATE.SKIPPED
+        if debug_enabled then
+          debug_module.log("Task '" .. id .. "' skipped due to 'when' condition returning false")
+        end
       end
     end
   end
@@ -987,6 +1031,11 @@ function M.run_tasks_with_dependencies(win_id, tasks, config)
   for id, task_state in pairs(M.tasks) do
     if task_state.state == M.TASK_STATE.PENDING and #task_state.depends_on > 0 then
       task_state.state = M.TASK_STATE.WAITING
+      if debug_enabled then
+        debug_module.log(
+          "Smart Commit: Task '" .. id .. "' waiting for dependencies: " .. table.concat(task_state.depends_on, ", ")
+        )
+      end
     end
   end
 

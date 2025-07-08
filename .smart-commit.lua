@@ -12,10 +12,16 @@ return {
     },
   },
   predefined_tasks = {
+    ["git:add"] = {
+      label = "Git add",
+      icon = "",
+      command = "mv ./.git/index.lock ./.git/index.sc.lock && git add -u && mv ./.git/index.sc.lock ./git/index.lock",
+    },
     ["lint:stylua-fix"] = {
       label = "Stylua Fix",
       icon = "",
       command = "stylua .",
+      on_success = "git:add",
     },
   },
   tasks = {

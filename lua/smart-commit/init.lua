@@ -208,4 +208,12 @@ end
 -- Initialize with default settings if not explicitly set up
 M.setup()
 
+-- Create user commands
+vim.api.nvim_create_user_command("SmartCommitLog", function()
+  local debug = require("smart-commit.debug")
+  debug.show_log_window(true)
+end, {
+  desc = "Show Smart Commit logs",
+})
+
 return M
