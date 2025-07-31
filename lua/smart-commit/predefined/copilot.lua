@@ -100,8 +100,8 @@ If there are no issues in a category, simply state "No issues found".
     -- Use headless mode with callback
     CopilotChat.ask(prompt, {
       headless = true,
-      context = {
-        "git:staged",
+      sticky = {
+        "#gitdiff:staged",
       },
       callback = function(response)
         if not response or response == "" then
@@ -194,16 +194,15 @@ feat(scope): add login functionality
 Implement user authentication flow with proper validation
 and error handling. Connects to the auth API endpoint.
 ```
-
 Only create the commit message. Do not explain anything!
+
 ]]
 
     -- Use headless mode with callback
     CopilotChat.ask(prompt, {
       headless = true,
-      context = {
-        "git:staged",
-        "file:`.git/COMMIT_EDITMSG`",
+      sticky = {
+        "#gitdiff:staged",
       },
       callback = function(response)
         if not response or response == "" then
