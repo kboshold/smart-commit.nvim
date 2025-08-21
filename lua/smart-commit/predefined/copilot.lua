@@ -118,7 +118,8 @@ If there are no issues in a category, simply state "No issues found".
         end
 
         -- Check for quota exceeded message
-        if response:match("[Qq]uota exceeded") or response:match("[Qq]uota extended") then
+        local content = response.content
+        if content:match("[Qq]uota exceeded") or content:match("[Qq]uota extended") then
           vim.notify("Copilot quota exceeded", vim.log.levels.ERROR)
 
           -- Update task status to failed
@@ -133,7 +134,7 @@ If there are no issues in a category, simply state "No issues found".
         end
 
         -- Store the analysis in the task output
-        ctx.runner.tasks[ctx.task.id].output = response
+        ctx.runner.tasks[ctx.task.id].output = content
 
         -- Create a floating window to display the analysis
         vim.schedule(function()
@@ -145,7 +146,7 @@ If there are no issues in a category, simply state "No issues found".
 
           -- Use the UI module to show the analysis in a floating window on the right
           local ui = require("smart-commit.ui")
-          ui.show_analysis(ctx.win_id, "Code Analysis Results", response)
+          ui.show_analysis(ctx.win_id, "Code Analysis Results", content)
         end)
       end,
     })
@@ -219,7 +220,8 @@ Only create the commit message. Do not explain anything!
         end
 
         -- Check for quota exceeded message
-        if response:match("[Qq]uota exceeded") or response:match("[Qq]uota extended") then
+        local content = response.content
+        if content:match("[Qq]uota exceeded") or content:match("[Qq]uota extended") then
           vim.notify("Copilot quota exceeded", vim.log.levels.ERROR)
 
           -- Update task status to failed
@@ -234,10 +236,10 @@ Only create the commit message. Do not explain anything!
         end
 
         -- Extract the gitcommit code block if present
-        local commit_message = response:match("```gitcommit\n(.-)\n```")
+        local commit_message = content:match("```gitcommit\n(.-)\n```")
         if not commit_message then
           -- If no code block found, just clean up markdown formatting
-          commit_message = response:gsub("```[%w]*\n", ""):gsub("```", "")
+          commit_message = content:gsub("```[%w]*\n", ""):gsub("```", "")
         end
 
         -- Insert the commit message into the buffer
